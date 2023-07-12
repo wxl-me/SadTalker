@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package brain.nlp.api.xiaoyuanTTS.v1;
+
+option go_package = "git.aimall-tech.com/product/brain/nlp/api/xiaoyuan_tts/v1";
+
+
+message ExecReq {
+    string conversation_id = 1; //会话id
+    string user_id= 2; //用户id
+    string text = 3; //小元回复的文本内容
+    int32 speaker_id =4; //合成的人声
+}
+
+message ExecResp {
+    string conversation_id = 1;  //会话id
+    string user_id = 2; //用户id
+    bytes wav_data = 3; //合成音频文件内容 接收字节数据写入文件 以后缀wav命名
+}
+
+service API {
+    rpc Exec(ExecReq) returns (ExecResp) {}
+}
+
