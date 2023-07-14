@@ -133,8 +133,8 @@ def main(args):
                                     enhancer=args.enhancer, background_enhancer=args.background_enhancer, preprocess=args.preprocess, img_size=args.size)
 
         #pipe_audio.stdin.write(segment.raw_data)
-        while time.time()-last_t<interrupt_t-0.1:
-            pass
+        '''while time.time()-last_t<interrupt_t-0.1:
+            pass'''
         if 0:
             def thread_push():
                 os.system('ffmpeg -re -stream_loop -1 -i ' + result + ' -acodec aac -ar 44100 -vcodec h264 -r 25 -f flv rtmp://127.0.0.1/live/1')
@@ -149,6 +149,13 @@ def main(args):
         os.system('ffmpeg -i ' + result + ' -acodec aac -ar 44100 -vcodec h264 -r 25 -f flv rtmp://127.0.0.1/live/1')
         if state==False:
             print(' Closing continuous generation! ')
+            del preprocess_model
+            del audio_to_coeff
+            del animate_from_coeff
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
             break
         
         #pipe_all.stdin.write(result.encode())
@@ -168,35 +175,36 @@ def launch(source_image,
             ref_info,
             use_idle_mode,
             length_of_audio,
-            blink_every
-        ):
+            blink_every):
     global state
-    state ^= True
-    if state: 
-        args = ArgumentParser()
-        args.source_image = source_image if source_image is not None else './examples/source_image/art_6.png'
-        args.driven_audio = driven_audio
-        args.pose_style = pose_style
-        args.expression_scale = exp_weight
-        args.facerender = 'pirender'
-        args.device = "cuda"
-        args.batch_size = 25
-        args.input_yaw = None
-        args.input_pitch = None
-        args.input_roll = None
-        args.ref_eyeblink = None
-        args.ref_pose = None
-        args.size = 256
-        args.old_version = False
-        args.preprocess = preprocess_type
-        args.checkpoint_dir = './checkpoints'
-        args.result_dir = './results'
-        args.background_enhancer = None
-        args.enhancer = False
-        args.still = is_still_mode
-        
-        main(args)
+    state = True
+    args = ArgumentParser()
+    args.source_image = source_image if source_image is not None else './examples/source_image/art_6.png'
+    args.driven_audio = driven_audio
+    args.pose_style = pose_style
+    args.expression_scale = exp_weight
+    args.facerender = 'pirender'
+    args.device = "cuda"
+    args.batch_size = 25
+    args.input_yaw = None
+    args.input_pitch = None
+    args.input_roll = None
+    args.ref_eyeblink = None
+    args.ref_pose = None
+    args.size = 256
+    args.old_version = False
+    args.preprocess = preprocess_type
+    args.checkpoint_dir = './checkpoints'
+    args.result_dir = './results'
+    args.background_enhancer = None
+    args.enhancer = False
+    args.still = is_still_mode
+    
+    main(args)
 
+def close():
+    global state
+    state = False
 
     
 if __name__ == '__main__':

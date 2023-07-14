@@ -37,7 +37,7 @@ def sadtalker_demo(checkpoint_path='checkpoints', config_path='src/config', warp
                     with gr.TabItem('源图像'):
                         with gr.Row():
                             source_image = gr.Image(label="上传源图像", source="upload", type="filepath", elem_id="img2img_image").style(height=256)
-                            gen_video = gr.Video(label="已生成视频", format="mp4").style(width=256)
+                            gen_video = gr.Video(label="已生成视频", format="mp4",source='webcam').style(width=256)
 
                 gr.Markdown("可供选择的生成方式:  1. 仅音频 2. 音频+参考视频 3. IDLE模式 4.仅参考视频")
                 with gr.Tabs(elem_id="sadtalker_driven_audio"):
@@ -67,7 +67,9 @@ def sadtalker_demo(checkpoint_path='checkpoints', config_path='src/config', warp
                                 ref_info = gr.Radio(['pose', 'blink','pose+blink', 'all'], value='pose', label='如何参考视频')
                             ref_video.change(ref_video_fn, inputs=ref_video, outputs=[use_ref_video]) # todo
                     with gr.TabItem('持续生成'):
-                        generate_continous = gr.Button('持续生成', elem_id="sadtalker_generate_continuous", variant='primary')
+                        with gr.Row():
+                            generate_continous = gr.Button('开启', elem_id="sadtalker_generate_continuous", variant='primary')
+                            close_generate_continous = gr.Button('关闭', elem_id="sadtalker_generate_continuous", variant='primary')
 
             with gr.Column(variant='panel'): 
                 with gr.Tabs(elem_id="sadtalker_checkbox"):
@@ -90,7 +92,7 @@ def sadtalker_demo(checkpoint_path='checkpoints', config_path='src/config', warp
                                 
                             submit = gr.Button('生成', elem_id="sadtalker_generate", variant='primary')
         
-        submit.click(
+        submit_click = submit.click(
                 fn=warpfn(sad_talker.test) if warpfn else sad_talker.test,
                 inputs=[source_image,
                         driven_audio,
@@ -111,7 +113,7 @@ def sadtalker_demo(checkpoint_path='checkpoints', config_path='src/config', warp
                         ], 
                 outputs=[gen_video]
                 )
-        generate_continous.click(fn=push_inference.launch,
+        generate_continous_click = generate_continous.click(fn=push_inference.launch,
                 inputs=[
                         source_image,
                         driven_audio,
@@ -130,6 +132,7 @@ def sadtalker_demo(checkpoint_path='checkpoints', config_path='src/config', warp
                         length_of_audio,
                         blink_every
                         ],)
+        close_generate_continous.click(fn=push_inference.close,cancels=[generate_continous_click])
     return sadtalker_interface
  
 
