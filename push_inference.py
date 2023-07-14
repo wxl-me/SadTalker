@@ -20,10 +20,10 @@ import multiprocessing as mp
 import pyaudio, wave, threading, audioop
 from pydub import AudioSegment
 
-
+state = False
 def main(args):
     #torch.backends.cudnn.enabled = False
-
+    global state
     pic_path = args.source_image
     audio_path = args.driven_audio
     save_dir = os.path.join(args.result_dir, strftime("%Y_%m_%d_%H.%M.%S"))
@@ -146,9 +146,56 @@ def main(args):
             if not ret: # 如果视频帧读取失败，退出循环
                 break
             pipe_video.stdin.write(frame.tobytes())'''
-        #os.system('ffmpeg -i ' + result + ' -acodec aac -ar 44100 -vcodec h264 -r 25 -f flv rtmp://127.0.0.1/live/1')
+        os.system('ffmpeg -i ' + result + ' -acodec aac -ar 44100 -vcodec h264 -r 25 -f flv rtmp://127.0.0.1/live/1')
+        if state==False:
+            print(' Closing continuous generation! ')
+            break
         
         #pipe_all.stdin.write(result.encode())
+
+def launch(source_image,
+            driven_audio,
+            preprocess_type,
+            is_still_mode,
+            enhancer,
+            batch_size,                            
+            size_of_image,
+            pose_style,
+            facerender,
+            exp_weight,
+            use_ref_video,
+            ref_video,
+            ref_info,
+            use_idle_mode,
+            length_of_audio,
+            blink_every
+        ):
+    global state
+    state ^= True
+    if state: 
+        args = ArgumentParser()
+        args.source_image = source_image if source_image is not None else './examples/source_image/art_6.png'
+        args.driven_audio = driven_audio
+        args.pose_style = pose_style
+        args.expression_scale = exp_weight
+        args.facerender = 'pirender'
+        args.device = "cuda"
+        args.batch_size = 25
+        args.input_yaw = None
+        args.input_pitch = None
+        args.input_roll = None
+        args.ref_eyeblink = None
+        args.ref_pose = None
+        args.size = 256
+        args.old_version = False
+        args.preprocess = preprocess_type
+        args.checkpoint_dir = './checkpoints'
+        args.result_dir = './results'
+        args.background_enhancer = None
+        args.enhancer = False
+        args.still = is_still_mode
+        
+        main(args)
 
 
     
