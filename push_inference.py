@@ -84,7 +84,6 @@ def main(args):
     else:
         ref_pose_coeff_path=None
 
-    
     interrupt_t = 1
     p = pyaudio.PyAudio()
     RATE = 44100
@@ -136,13 +135,19 @@ def main(args):
         #pipe_audio.stdin.write(segment.raw_data)
         while time.time()-last_t<interrupt_t-0.1:
             pass
+        if 0:
+            def thread_push():
+                os.system('ffmpeg -re -stream_loop -1 -i ' + result + ' -acodec aac -ar 44100 -vcodec h264 -r 25 -f flv rtmp://127.0.0.1/live/1')
+            threading.Thread(target=thread_push).start()
+            flag = 0
         '''vedio = cv2.VideoCapture(result) 
         while True:
             ret, frame = vedio.read() # 读取视频帧  
             if not ret: # 如果视频帧读取失败，退出循环
                 break
             pipe_video.stdin.write(frame.tobytes())'''
-        os.system('ffmpeg -i ' + result + ' -acodec aac -ar 44100 -vcodec h264 -r 25 -f flv rtmp://127.0.0.1/live/1')
+        #os.system('ffmpeg -i ' + result + ' -acodec aac -ar 44100 -vcodec h264 -r 25 -f flv rtmp://127.0.0.1/live/1')
+        
         #pipe_all.stdin.write(result.encode())
 
 
@@ -171,7 +176,7 @@ if __name__ == '__main__':
     parser.add_argument("--preprocess", default='crop', choices=['crop', 'extcrop', 'resize', 'full', 'extfull'], help="how to preprocess the images" ) 
     parser.add_argument("--verbose",action="store_true", help="saving the intermedia output or not" ) 
     parser.add_argument("--old_version",action="store_true", help="use the pth other than safetensor version" ) 
-    parser.add_argument("--facerender", default='pirender', choices=['pirender', 'facevid2vid'] ) 
+    parser.add_argument("--facerender", default='pirender', choices=['pirender', 'facevid2vid']) 
     
 
     # net structure and parameters
