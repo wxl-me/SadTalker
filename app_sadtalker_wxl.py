@@ -91,10 +91,7 @@ def sadtalker_demo(checkpoint_path='checkpoints', config_path='src/config', warp
                                     is_still_mode = gr.Checkbox(label="静止模式(仅在`full`)")   
                                 
                             submit = gr.Button('生成', elem_id="sadtalker_generate", variant='primary')
-        
-        submit_click = submit.click(
-                fn=warpfn(sad_talker.test) if warpfn else sad_talker.test,
-                inputs=[source_image,
+        inputs=[source_image,
                         driven_audio,
                         preprocess_type,
                         is_still_mode,
@@ -109,29 +106,9 @@ def sadtalker_demo(checkpoint_path='checkpoints', config_path='src/config', warp
                         ref_info,
                         use_idle_mode,
                         length_of_audio,
-                        blink_every
-                        ], 
-                outputs=[gen_video]
-                )
-        generate_continous_click = generate_continous.click(fn=push_inference.launch,
-                inputs=[
-                        source_image,
-                        driven_audio,
-                        preprocess_type,
-                        is_still_mode,
-                        enhancer,
-                        batch_size,                            
-                        size_of_image,
-                        pose_style,
-                        facerender,
-                        exp_weight,
-                        use_ref_video,
-                        ref_video,
-                        ref_info,
-                        use_idle_mode,
-                        length_of_audio,
-                        blink_every
-                        ],)
+                        blink_every]
+        submit_click = submit.click(fn=warpfn(sad_talker.test) if warpfn else sad_talker.test, inputs=inputs, outputs=[gen_video])
+        generate_continous_click = generate_continous.click(fn=push_inference.launch, inputs=inputs)
         close_generate_continous.click(fn=push_inference.close,cancels=[generate_continous_click])
     return sadtalker_interface
  

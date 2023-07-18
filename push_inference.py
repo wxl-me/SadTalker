@@ -15,7 +15,7 @@ from src.utils.init_path import init_path
 
 import subprocess
 import cv2
-import time, random
+import time, random, scipy.io
 import multiprocessing as mp
 import pyaudio, wave, threading, audioop
 from pydub import AudioSegment
@@ -24,6 +24,7 @@ state = False
 def main(args):
     #torch.backends.cudnn.enabled = False
     global state
+    last_frame = None
     pic_path = args.source_image
     audio_path = args.driven_audio
     save_dir = os.path.join(args.result_dir, strftime("%Y_%m_%d_%H.%M.%S"))
@@ -109,7 +110,9 @@ def main(args):
         audio = audio*10
         #segment = audio #audio[t*2000:(t+1)*2000]
         #segment.export('./results/tmp.wav',format='wav')'''
-
+        if last_frame is not None and False:
+            first_coeff_path, _, _ =  preprocess_model.generate(pic_path, first_frame_dir, args.preprocess,\
+                                                                             source_image_flag=True, pic_size=args.size,last_frame=last_frame)
         print('cost time : ', time.time()-last_t)
         last_t = time.time()
         seg_audio_path = './results/tmp.wav'     
@@ -133,8 +136,8 @@ def main(args):
                                     enhancer=args.enhancer, background_enhancer=args.background_enhancer, preprocess=args.preprocess, img_size=args.size)
 
         #pipe_audio.stdin.write(segment.raw_data)
-        '''while time.time()-last_t<interrupt_t-0.1:
-            pass'''
+        while time.time()-last_t<interrupt_t-0.05:
+            pass
         if 0:
             def thread_push():
                 os.system('ffmpeg -re -stream_loop -1 -i ' + result + ' -acodec aac -ar 44100 -vcodec h264 -r 25 -f flv rtmp://127.0.0.1/live/1')
@@ -147,7 +150,7 @@ def main(args):
                 break
             pipe_video.stdin.write(frame.tobytes())'''
         os.system('ffmpeg -i ' + result + ' -acodec aac -ar 44100 -vcodec h264 -r 25 -f flv rtmp://127.0.0.1/live/1')
-        if state==False:
+        if state==False and __name__!='__main__':
             print(' Closing continuous generation! ')
             del preprocess_model
             del audio_to_coeff
@@ -157,6 +160,7 @@ def main(args):
                 torch.cuda.empty_cache()
                 torch.cuda.synchronize()
             break
+        #scipy.io.savemat(first_coeff_path,{'coeff_3dmm': last_coeff_np})
         
         #pipe_all.stdin.write(result.encode())
 
@@ -193,7 +197,7 @@ def launch(source_image,
     args.ref_pose = None
     args.size = 256
     args.old_version = False
-    args.preprocess = preprocess_type
+    args.preprocess = 'crop'
     args.checkpoint_dir = './checkpoints'
     args.result_dir = './results'
     args.background_enhancer = None

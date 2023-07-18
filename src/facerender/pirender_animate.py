@@ -66,7 +66,7 @@ class AnimateFromCoeff_PIRender():
             image = np.transpose(image.data.cpu().numpy(), [1, 2, 0]).astype(np.float32)
             video.append(image)
         result = img_as_ubyte(video)
-
+        #last_frame = result[-1]
         ### the generated video is 256x256, so we keep the aspect ratio, 
         original_size = crop_info[0]
         if original_size:
@@ -126,5 +126,5 @@ class AnimateFromCoeff_PIRender():
         os.remove(path)
         os.remove(new_audio_path)
 
-        return return_path
+        return return_path#,last_frame
 

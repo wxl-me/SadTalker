@@ -60,7 +60,7 @@ class CropAndExtract():
         self.lm3d_std = load_lm3d(sadtalker_path['dir_of_BFM_fitting'])
         self.device = device
     
-    def generate(self, input_path, save_dir, crop_or_resize='crop', source_image_flag=False, pic_size=256):
+    def generate(self, input_path, save_dir, crop_or_resize='crop', source_image_flag=False, pic_size=256, last_frame=None):
 
         pic_name = os.path.splitext(os.path.split(input_path)[-1])[0]  
 
@@ -69,7 +69,9 @@ class CropAndExtract():
         png_path =  os.path.join(save_dir, pic_name+'.png')  
 
         #load input
-        if not os.path.isfile(input_path):
+        if last_frame is not None:
+            full_frames = [last_frame]
+        elif not os.path.isfile(input_path):
             raise ValueError('input_path must be a valid path to video/image file')
         elif input_path.split('.')[-1] in ['jpg', 'png', 'jpeg']:
             # loader for first frame
@@ -89,10 +91,12 @@ class CropAndExtract():
                 if source_image_flag:
                     break
 
-        x_full_frames= [cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  for frame in full_frames] 
+        x_full_frames= [cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  for frame in full_frames] if last_frame is None else full_frames
 
         #### crop images as the 
-        if 'crop' in crop_or_resize.lower(): # default crop
+        if last_frame is not None:
+            crop_info = (None,None,None)
+        elif 'crop' in crop_or_resize.lower(): # default crop
             x_full_frames, crop, quad = self.propress.crop(x_full_frames, still=True if 'ext' in crop_or_resize.lower() else False, xsize=512)
             clx, cly, crx, cry = crop
             lx, ly, rx, ry = quad

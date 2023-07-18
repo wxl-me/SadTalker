@@ -165,6 +165,6 @@ class SadTalker():
             
         import gc; gc.collect()
         
-        return return_path
+        return return_path#[0]
 
     
