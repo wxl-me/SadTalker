@@ -42,7 +42,7 @@ class TTSTalker_API():
         self.origin_talker = TTSTalker()
         self.xiaoyuan_talker = TTSTalker1()
         
-    def test(self, text, talker):
+    def test(self, text, talker=0):
         if talker==0:
             return self.xiaoyuan_talker.test(text)
         elif talker==1:
