@@ -10,14 +10,19 @@ from src.facerender.pirender_animate import AnimateFromCoeff_PIRender
 from src.generate_batch import get_data
 from src.generate_facerender_batch import get_facerender_data
 from src.utils.init_path import init_path
-import time
+import time,json,base64
 import multiprocessing as mp
 import pyaudio, wave, threading
-from flask import Flask, jsonify, request, make_response, send_from_directory
+from flask import Flask, jsonify, request, make_response, send_from_directory, Response
 from src.utils.text2speech import TTSTalker_API
+from gevent import pywsgi
+from pydub import AudioSegment
+from moviepy import editor
 
 class GenVideoApi(object):
     def __init__(self, args):
+        self.duration = 0
+        self.now_duration = 0
         self.tts = TTSTalker_API()
         self.app = Flask("__main__")  # web framework
         pic_path = args.source_image
@@ -109,8 +114,76 @@ class GenVideoApi(object):
                 return response
             except Exception as e:
                 return jsonify({"code": "异常", "message": "{}".format(e)})
+            
+        @self.app.route("/genVideoStream", methods=["GET"])
+        def call_generate_video_stream():    
+            textmessage = request.form
+            wav_tts = self.tts.test(textmessage['userText'])
+            audio = AudioSegment.from_file(wav_tts)
+            self.duration = audio.duration_seconds # 单位为秒
 
+            for t in range(int(self.duration)+1):
+                self.now_duration = t
+                segment = audio[t*1000:(t+1)*1000]
+                segment.export('./results/tmp.wav',format='wav')
+                segment_path = './results/tmp.wav'
+                batch = get_data(self.first_coeff_path, segment_path, device, ref_eyeblink_coeff_path, still=args.still)
+                coeff_path = self.audio_to_coeff.generate(batch, save_dir, pose_style, ref_pose_coeff_path)
+                #coeff2video
+                data = get_facerender_data(coeff_path, crop_pic_path, self.first_coeff_path, segment_path, 
+                                            batch_size, input_yaw_list, input_pitch_list, input_roll_list,
+                                            expression_scale=args.expression_scale, still_mode=args.still, preprocess=args.preprocess, size=args.size, facemodel=args.facerender)
+                result = self.animate_from_coeff.generate(data, save_dir, pic_path, crop_info, \
+                                            enhancer=args.enhancer, background_enhancer=args.background_enhancer, preprocess=args.preprocess, img_size=args.size)
+                return jsonify({"path": result})    
+                 
+        @self.app.route("/getVideoDuration", methods=["GET"])
+        def call_get_audio_duration():
+            start = time.time()
+            while self.duration==0:
+                if time.time()-start>30:
+                    return jsonify({"duration":0})
+            return jsonify({"duration":self.duration})
         
+        @self.app.route("/getVideo", methods=["GET"])
+        def call_get_video():
+            textmessage = request.form
+            need_n = textmessage['n']
+            start = time.time()
+            while self.now_duration<need_n:
+                if time.time()-start>10:
+                    return jsonify({"error":"timeout"})
+            video = 'return_video'+str(need_n)+'.mp4'
+            try:
+                response = make_response(send_from_directory('', video, as_attachment=True))
+                return response
+            except Exception as e:
+                return jsonify({"error": "异常", "message": "{}".format(e)})
+            
+        @self.app.route("/test",methods=["GET","POST"])
+        def call_test():
+            #textmessage = request.form
+            def eventStream(textmessage):
+                wav_tts = self.tts.test(textmessage['userText'])
+                audio = AudioSegment.from_file(wav_tts)  
+                self.duration = audio.duration_seconds # 单位为秒              
+                for t in range(int(self.duration)+1):
+                    self.now_duration = t
+                    segment = audio[t*1000:(t+1)*1000]
+                    segment.export('./results/tmp.wav',format='wav')
+                    segment_path = './results/tmp.wav'
+                    batch = get_data(self.first_coeff_path, segment_path, device, ref_eyeblink_coeff_path, still=args.still)
+                    coeff_path = self.audio_to_coeff.generate(batch, save_dir, pose_style, ref_pose_coeff_path)
+                    #coeff2video
+                    data = get_facerender_data(coeff_path, crop_pic_path, self.first_coeff_path, segment_path, 
+                                                batch_size, input_yaw_list, input_pitch_list, input_roll_list,
+                                                expression_scale=args.expression_scale, still_mode=args.still, preprocess=args.preprocess, size=args.size, facemodel=args.facerender)
+                    result = self.animate_from_coeff.generate(data, save_dir, pic_path, crop_info, \
+                                                enhancer=args.enhancer, background_enhancer=args.background_enhancer, preprocess=args.preprocess, img_size=args.size)
+                    with open(result, 'rb') as f:
+                        yield 'data:'+json.dumps({'value': str(base64.b64encode(f.read()))})+'\n\n'
+            
+            return Response(eventStream(textmessage={'userText':'我是一个人工智能语音助手，您可以提问我'}), mimetype="text/event-stream")
 
     #生成图像 <div id="component-8" class="block svelte-mppz8v" style="width: 256px; border-style: solid; overflow: hidden; background-color: rgb(193, 230, 198); border-color: rgba(0, 0, 0, 0.35);"><div class="wrap default svelte-j1gjts hide" style="position: absolute; padding: 0px; background-color: rgb(193, 230, 198);"></div> <div style="background-color: rgb(193, 230, 198); border-bottom-color: rgba(0, 0, 0, 0.35); border-right-color: rgba(0, 0, 0, 0.35);" class="svelte-1sohkj6 float"><span class="svelte-1sohkj6"><svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="feather feather-video"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg></span> 已生成视频</div> <div class="wrap svelte-1vnmhm4" style="opacity: 1; background-color: rgb(193, 230, 198);"><video src="http://192.168.102.22:7860/file=/tmp/gradio/ac955accc8f2622a4ba6ab86c59e7463ea2f213c/imageidlemode_2.0.mp4" preload="auto" class="svelte-1vnmhm4" style="opacity: 1; transition: all 0.2s ease 0s;"><track kind="captions" default=""></video> <div class="controls svelte-1vnmhm4" style="opacity: 0; transition: all 0.2s ease 0s;"><div class="inner svelte-1vnmhm4"><span class="icon svelte-1vnmhm4"><svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="feather feather-rotate-ccw"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg></span> <span class="time svelte-1vnmhm4">0:02 / 0:02</span> <progress value="1" class="svelte-1vnmhm4"></progress> <div class="icon svelte-1vnmhm4"><svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg></div></div></div></div> <div class="download svelte-90pr3x" data-testid="download-div"><a href="http://192.168.102.22:7860/file=/tmp/gradio/ac955accc8f2622a4ba6ab86c59e7463ea2f213c/imageidlemode_2.0.mp4" download="imageidlemode_2.0.mp4"><button aria-label="Download" class="svelte-1p4r00v" style="background-color: rgb(193, 230, 198); border-color: rgba(0, 0, 0, 0.35);"><div class="svelte-1p4r00v"><svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 32 32"><path fill="currentColor" d="M26 24v4H6v-4H4v4a2 2 0 0 0 2 2h20a2 2 0 0 0 2-2v-4zm0-10l-1.41-1.41L17 20.17V2h-2v18.17l-7.59-7.58L6 14l10 10l10-10z"></path></svg></div></button></a></div></div>
 if __name__ == '__main__':
@@ -163,6 +236,8 @@ if __name__ == '__main__':
     else:
         args.device = "cpu"
     args.still = True
-    server = GenVideoApi(args)
-    server.app.run(host='0.0.0.0', port=9907)
-
+    '''server = GenVideoApi(args)
+    server.app.run(host='0.0.0.0', port=9907)'''
+    api = GenVideoApi(args)
+    server = pywsgi.WSGIServer(('0.0.0.0', 9907), api.app)
+    server.serve_forever()

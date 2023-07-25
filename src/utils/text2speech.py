@@ -33,7 +33,7 @@ class TTSTalker1():
         return './results/temp.wav'
     
     def getTTsResult(self, robotText, tts_id:str='others', ues_thread=False):
-        wav_data = self.tts_stub.Exec(self.xiaoyuan_tts_v1_api_pb2.ExecReq(conversation_id="122",user_id="4",text=robotText)).wav_data # 接收转码得到字节数据
+        wav_data = self.tts_stub.Exec(self.xiaoyuan_tts_v1_api_pb2.ExecReq(conversation_id="120",user_id="1",text=robotText)).wav_data # 接收转码得到字节数据
         with open('./results/temp.wav',"wb+") as f: # 写入文件
             f.write(wav_data)
         
