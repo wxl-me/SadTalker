@@ -47,3 +47,10 @@ class TTSTalker_API():
             return self.xiaoyuan_talker.test(text)
         elif talker==1:
             return self.origin_talker.test(text)
+
+if __name__ == '__main__':
+    import time     
+    tts = TTSTalker_API()
+    start = time.time()
+    tts.test('"这个TTS到底快不快阿"') # 1.03s
+    print('cost time : ',time.time()-start)

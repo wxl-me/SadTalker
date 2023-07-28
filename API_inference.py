@@ -18,11 +18,18 @@ from src.utils.text2speech import TTSTalker_API
 from gevent import pywsgi
 from pydub import AudioSegment
 from moviepy import editor
+import requests, re
 
 class GenVideoApi(object):
     def __init__(self, args):
         self.duration = 0
         self.now_duration = 0
+        self.wav_tts = []
+        self.wav_tts_ok = False
+        self.time = 0
+        self.cache = []
+        self.render_ok = False
+
         self.tts = TTSTalker_API()
         self.app = Flask("__main__")  # web framework
         pic_path = args.source_image
@@ -88,7 +95,7 @@ class GenVideoApi(object):
         print('prepare model ok!')
 
 
-        @self.app.route("/genVideo", methods=["POST"])
+        '''@self.app.route("/genVideo", methods=["POST"])
         def call_generate_video():
             begin_t = time.time()
             textmessage = request.form
@@ -159,14 +166,30 @@ class GenVideoApi(object):
                 return response
             except Exception as e:
                 return jsonify({"error": "异常", "message": "{}".format(e)})
-            
+        
+        @self.app.route("/test_send",methods=["GET","POST"])
+        def call_test_send():
+            textmessage = request.form['userText']
+            print('got Text: '+textmessage)
+            textmessage = textmessage.replace('\\n','')
+            last = time.time()
+            self.wav_tts = self.tts.test(textmessage)
+            print('tts cost time: ',time.time()-last)
+            return jsonify('ok')
+        
         @self.app.route("/test",methods=["GET","POST"])
         def call_test():
             #textmessage = request.form
-            def eventStream(textmessage):
-                wav_tts = self.tts.test(textmessage['userText'])
-                audio = AudioSegment.from_file(wav_tts)  
-                self.duration = audio.duration_seconds # 单位为秒              
+            def eventStream():
+                last = time.time()
+                while self.wav_tts is None:
+                    if time.time()-last>15:
+                        return 
+                audio = AudioSegment.from_file(self.wav_tts)  
+                self.duration = audio.duration_seconds # 单位为秒     
+                to_add = self.duration - int(self.duration)     
+                audio = audio + AudioSegment.silent((1-to_add)*1000)
+                print('audio time duration: ',audio.duration_seconds)
                 for t in range(int(self.duration)+1):
                     self.now_duration = t
                     segment = audio[t*1000:(t+1)*1000]
@@ -182,8 +205,190 @@ class GenVideoApi(object):
                                                 enhancer=args.enhancer, background_enhancer=args.background_enhancer, preprocess=args.preprocess, img_size=args.size)
                     with open(result, 'rb') as f:
                         yield 'data:'+json.dumps({'value': str(base64.b64encode(f.read()))})+'\n\n'
+                self.wav_tts = None
             
-            return Response(eventStream(textmessage={'userText':'我是一个人工智能语音助手，您可以提问我'}), mimetype="text/event-stream")
+            return Response(eventStream(), mimetype="text/event-stream")
+        
+        @self.app.route("/test_send1",methods=["GET","POST"])
+        def call_test_send1():
+            self.wav_tts = []
+            textmessage = request.form['userText']
+            self.time = time.time()
+            def thread_tts(self, textmessage):
+                voice_time = 0
+                print('got Text: '+textmessage)
+                textmessage = textmessage.replace('\\n','')
+                textmessage = textmessage.split('。')
+                if textmessage[-1]=='':
+                    textmessage.pop()
+                last = time.time()
+                for i in range(len(textmessage)):
+                    part_audio = AudioSegment.from_file(self.tts.test(textmessage[i]))
+                    ds = part_audio.duration_seconds
+                    for t in range(int(ds)):
+                        self.wav_tts.append(part_audio[t*1000:(t+1)*1000])
+                        voice_time += 1
+                    self.wav_tts.append(part_audio[int(ds)*1000:]+AudioSegment.silent((1+int(ds)-ds)*1000))
+                    voice_time += 1
+                self.wav_tts_ok = True
+                print('tts cost time: ',time.time()-last, 'voice time is : ', voice_time)
+                
+            threading.Thread(target=thread_tts,args=(self,textmessage)).start()
+            return jsonify('ok')
+        
+        @self.app.route("/test1",methods=["GET","POST"])
+        def call_test1():
+            print('get data->process cost time : ',time.time()-self.time)
+            def eventStream():
+                last = time.time()
+                while len(self.wav_tts)==0:
+                    if time.time()-last>15:
+                        print('timeout error')
+                        return 
+                while len(self.wav_tts)!=0 or not self.wav_tts_ok: 
+                    if len(self.wav_tts)==0:
+                        pass
+                    segment = self.wav_tts.pop(0)
+                    segment.export('./results/tmp.wav',format='wav')
+                    segment_path = './results/tmp.wav'
+                    batch = get_data(self.first_coeff_path, segment_path, device, ref_eyeblink_coeff_path, still=args.still)
+                    coeff_path = self.audio_to_coeff.generate(batch, save_dir, pose_style, ref_pose_coeff_path)
+                    #coeff2video
+                    data = get_facerender_data(coeff_path, crop_pic_path, self.first_coeff_path, segment_path, 
+                                                batch_size, input_yaw_list, input_pitch_list, input_roll_list,
+                                                expression_scale=args.expression_scale, still_mode=args.still, preprocess=args.preprocess, size=args.size, facemodel=args.facerender)
+                    result = self.animate_from_coeff.generate(data, save_dir, pic_path, crop_info, \
+                                                enhancer=args.enhancer, background_enhancer=args.background_enhancer, preprocess=args.preprocess, img_size=args.size)
+                    with open(result, 'rb') as f:
+                        yield 'data:'+json.dumps({'value': str(base64.b64encode(f.read()))})+'\n\n'
+                self.wav_tts, self.wav_tts_ok = [], False
+            
+            return Response(eventStream(), mimetype="text/event-stream")
+        '''
+        @self.app.route("/test_send2",methods=["GET","POST"])
+        def call_test_send2():
+            self.wav_tts = []
+            textmessage = request.form['userText']
+            self.time = time.time()
+            print('get question : ', textmessage)
+
+            def thread_tts1(self:GenVideoApi, textmessage):
+                voice_time = 0
+                print('got Text: '+textmessage)
+                textmessage = textmessage.replace('\\n','')
+                textmessage = textmessage.split('。')
+                if textmessage[-1]=='':
+                    textmessage.pop()
+                last = time.time()
+                for i in range(len(textmessage)):
+                    part_audio = AudioSegment.from_file(self.tts.test(textmessage[i]))
+                    ds = part_audio.duration_seconds
+                    for t in range(int(ds)):
+                        self.wav_tts.append(part_audio[t*1000:(t+1)*1000])
+                        voice_time += 1
+                    self.wav_tts.append(part_audio[int(ds)*1000:]+AudioSegment.silent((1+int(ds)-ds)*1000))
+                    voice_time += 1
+                self.wav_tts_ok = True
+                print('tts cost time: ',time.time()-last, 'voice time is : ', voice_time)
+
+            def thread_gpt_tts(self:GenVideoApi, text):
+                url = 'http://36.140.15.200:8003/api/m/qa/chat' #正式版stream
+                word_point = 0
+                has_fh = False
+                has_10 = False
+                has_10_time = 0
+                response = requests.post(url, stream=True, json={"message_id":13, "text":text})   
+                voice_time = 0
+                last = time.time()
+                for chunk in response.iter_lines(decode_unicode=True, delimiter='-----'):
+                    if chunk:
+                        if not has_fh and not has_10:
+                            if '。' in chunk or '，' in chunk or '：' in chunk:
+                                has_fh = True
+                            '''elif len(chunk)>9:
+                                has_10 = True'''
+                        else:
+                            '''if has_10:
+                                if '。' in chunk or '，' in chunk:
+                                    word_list = re.split('，|。', chunk.replace('\n','')[has_10_time*10:])
+                                    has_10 = False
+                                    has_fh = True
+                                    word_point = 1
+                                else:
+                                    word_list = [chunk.replace('\n','')[has_10_time*10:has_10_time*10+10], ''] #re.split('，|。', chunk[10:].replace('\n',''))
+                                    has_10_time += 1
+                            elif has_fh:
+                                word_list = re.split('，|。', chunk.replace('\n',''))'''
+                            word_list = re.split('，|。|：', chunk.replace('\n',''))
+                            max_len = len(word_list)
+                            '''if has_10:
+                                max_len = has_10_time+1'''
+                            if max_len>word_point:
+                                print('time : ', word_point, 'word to tts : ', word_list[-2])
+                                textmessage = word_list[-2]
+                                word_point = max_len
+                                part_audio = AudioSegment.from_file(self.tts.test(textmessage))
+                                ds = part_audio.duration_seconds
+                                for t in range(int(ds)):
+                                    self.wav_tts.append(part_audio[t*1000:(t+1)*1000])
+                                    voice_time += 1
+                                self.wav_tts.append(part_audio[int(ds)*1000:]+AudioSegment.silent((1+int(ds)-ds)*1000))
+                                voice_time += 1
+                self.wav_tts_ok = True
+                print('tts cost time: ',time.time()-last, 'voice time is : ', voice_time)
+
+            def thread_render(self:GenVideoApi):
+                last = time.time()
+                while len(self.wav_tts)==0:
+                    if time.time()-last>15:
+                        print('timeout error')
+                        return 
+                    else:
+                        time.sleep(0.05)
+                while len(self.wav_tts)!=0 or not self.wav_tts_ok: 
+                    if len(self.wav_tts)==0:
+                        time.sleep(0.05)
+                        continue
+                    segment = self.wav_tts.pop(0)
+                    segment.export('./results/tmp.wav',format='wav')
+                    segment_path = './results/tmp.wav'
+                    batch = get_data(self.first_coeff_path, segment_path, device, ref_eyeblink_coeff_path, still=args.still)
+                    coeff_path = self.audio_to_coeff.generate(batch, save_dir, pose_style, ref_pose_coeff_path)
+                    #coeff2video
+                    data = get_facerender_data(coeff_path, crop_pic_path, self.first_coeff_path, segment_path, 
+                                                batch_size, input_yaw_list, input_pitch_list, input_roll_list,
+                                                expression_scale=args.expression_scale, still_mode=args.still, preprocess=args.preprocess, size=args.size, facemodel=args.facerender)
+                    result = self.animate_from_coeff.generate(data, save_dir, pic_path, crop_info, \
+                                                enhancer=args.enhancer, background_enhancer=args.background_enhancer, preprocess=args.preprocess, img_size=args.size)
+                    with open(result, 'rb') as f:
+                        self.cache.append('data:'+json.dumps({'value': str(base64.b64encode(f.read()))})+'\n\n')
+                self.wav_tts, self.wav_tts_ok, self.render_ok = [], False, True
+                print('render over')
+
+            threading.Thread(target=thread_gpt_tts,args=(self,textmessage)).start()
+            threading.Thread(target=thread_render,args=(self,)).start()
+            return jsonify('ok')
+
+        @self.app.route("/test2",methods=["GET","POST"])
+        def call_test2():
+            def eventStream(self:GenVideoApi):
+                last = time.time()
+                while len(self.cache) != 0 or not self.render_ok:
+                    if len(self.cache)==0:
+                        time.sleep(0.05)
+                    else:
+                        ''' if time.time()-last<0.6:
+                            time.sleep(0.05)
+                        else:
+                            last = time.time()'''
+                        yield self.cache.pop(0)
+
+                self.render_ok = False
+                self.cache = []
+                print('push over')
+
+            return Response(eventStream(self), mimetype="text/event-stream")
+
 
     #生成图像 <div id="component-8" class="block svelte-mppz8v" style="width: 256px; border-style: solid; overflow: hidden; background-color: rgb(193, 230, 198); border-color: rgba(0, 0, 0, 0.35);"><div class="wrap default svelte-j1gjts hide" style="position: absolute; padding: 0px; background-color: rgb(193, 230, 198);"></div> <div style="background-color: rgb(193, 230, 198); border-bottom-color: rgba(0, 0, 0, 0.35); border-right-color: rgba(0, 0, 0, 0.35);" class="svelte-1sohkj6 float"><span class="svelte-1sohkj6"><svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="feather feather-video"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg></span> 已生成视频</div> <div class="wrap svelte-1vnmhm4" style="opacity: 1; background-color: rgb(193, 230, 198);"><video src="http://192.168.102.22:7860/file=/tmp/gradio/ac955accc8f2622a4ba6ab86c59e7463ea2f213c/imageidlemode_2.0.mp4" preload="auto" class="svelte-1vnmhm4" style="opacity: 1; transition: all 0.2s ease 0s;"><track kind="captions" default=""></video> <div class="controls svelte-1vnmhm4" style="opacity: 0; transition: all 0.2s ease 0s;"><div class="inner svelte-1vnmhm4"><span class="icon svelte-1vnmhm4"><svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="feather feather-rotate-ccw"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg></span> <span class="time svelte-1vnmhm4">0:02 / 0:02</span> <progress value="1" class="svelte-1vnmhm4"></progress> <div class="icon svelte-1vnmhm4"><svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg></div></div></div></div> <div class="download svelte-90pr3x" data-testid="download-div"><a href="http://192.168.102.22:7860/file=/tmp/gradio/ac955accc8f2622a4ba6ab86c59e7463ea2f213c/imageidlemode_2.0.mp4" download="imageidlemode_2.0.mp4"><button aria-label="Download" class="svelte-1p4r00v" style="background-color: rgb(193, 230, 198); border-color: rgba(0, 0, 0, 0.35);"><div class="svelte-1p4r00v"><svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 32 32"><path fill="currentColor" d="M26 24v4H6v-4H4v4a2 2 0 0 0 2 2h20a2 2 0 0 0 2-2v-4zm0-10l-1.41-1.41L17 20.17V2h-2v18.17l-7.59-7.58L6 14l10 10l10-10z"></path></svg></div></button></a></div></div>
 if __name__ == '__main__':
@@ -236,8 +441,10 @@ if __name__ == '__main__':
     else:
         args.device = "cpu"
     args.still = True
-    '''server = GenVideoApi(args)
-    server.app.run(host='0.0.0.0', port=9907)'''
-    api = GenVideoApi(args)
-    server = pywsgi.WSGIServer(('0.0.0.0', 9907), api.app)
-    server.serve_forever()
+    if 1:
+        server = GenVideoApi(args)
+        server.app.run(host='0.0.0.0', port=9907)
+    else:
+        api = GenVideoApi(args)
+        server = pywsgi.WSGIServer(('0.0.0.0', 9907), api.app)
+        server.serve_forever()
