@@ -211,7 +211,7 @@ print(response.content.decode().split('"result":"')[-1].split('"}')[0])#'''
 print(response)
 print('0')'''
 
-test('你认识openai么',gpt=False)
+test('你会做什么',gpt=False)
 time.sleep(5)
 time.sleep(5)
 

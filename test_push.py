@@ -1,6 +1,9 @@
 import pyaudio
 import wave
 import playsound
+import subprocess
+import time 
+
 command = [
                 'ffmpeg',
                 '-y',
@@ -36,14 +39,19 @@ command = ['ffmpeg', # linux不用指定
 
 command = [
 			'ffmpeg',
-			'-y',
 			'-i', 'pipe:',
 			'-vcodec',
-			'h264'
+			'h264',
+			'-acodec',
+			'aac',
+			'-ar',
+			'44100',
+			'-r',
+			'25',
 			'-f', 'flv',
 			'rtmp://127.0.0.1/live/1'
 ]
-#pipe_all = subprocess.Popen(command, stdin=subprocess.PIPE, shell=False)
+pipe_all = subprocess.Popen(command, stdin=subprocess.PIPE, shell=False)
 
 def start_audio(time = 10,save_file="test.wav"):
 	CHUNK = 4410
@@ -84,5 +92,16 @@ def start_audio(time = 10,save_file="test.wav"):
 
 	playsound.playsound('./test.wav')
 
-start_audio()
+#start_audio()
 
+video = open('idle.mp4','rb').read()
+last = time.time() 
+while 1:
+	if time.time()-last>0.95:
+		pipe_all.stdin.write(video)
+		last = time.time()
+		print('push')
+	else:
+		time.sleep(0.05)
+			
+	

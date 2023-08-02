@@ -95,33 +95,7 @@ class AnimateFromCoeff_PIRender():
         save_video_with_watermark(path, new_audio_path, av_path, watermark= False)
         print(f'The generated video is named {video_save_dir}/{video_name}') 
 
-        if 'full' in preprocess.lower():
-            # only add watermark to the full image.
-            video_name_full = x['video_name']  + '_full.mp4'
-            full_video_path = os.path.join(video_save_dir, video_name_full)
-            return_path = full_video_path
-            paste_pic(path, pic_path, crop_info, new_audio_path, full_video_path, extended_crop= True if 'ext' in preprocess.lower() else False)
-            print(f'The generated video is named {video_save_dir}/{video_name_full}') 
-        else:
-            full_video_path = av_path 
-
-        #### paste back then enhancers
-        if enhancer:
-            video_name_enhancer = x['video_name']  + '_enhanced.mp4'
-            enhanced_path = os.path.join(video_save_dir, 'temp_'+video_name_enhancer)
-            av_path_enhancer = os.path.join(video_save_dir, video_name_enhancer) 
-            return_path = av_path_enhancer
-
-            try:
-                enhanced_images_gen_with_len = enhancer_generator_with_len(full_video_path, method=enhancer, bg_upsampler=background_enhancer)
-                imageio.mimsave(enhanced_path, enhanced_images_gen_with_len, fps=float(25))
-            except:
-                enhanced_images_gen_with_len = enhancer_list(full_video_path, method=enhancer, bg_upsampler=background_enhancer)
-                imageio.mimsave(enhanced_path, enhanced_images_gen_with_len, fps=float(25))
-            
-            save_video_with_watermark(enhanced_path, new_audio_path, av_path_enhancer, watermark= False)
-            print(f'The generated video is named {video_save_dir}/{video_name_enhancer}')
-            os.remove(enhanced_path)
+        #os.system('ffmpeg -i ' + got_video + ' -acodec aac -ar 44100 -vcodec h264 -r 25 -f flv rtmp://127.0.0.1/live/1 -loglevel quiet')
 
         os.remove(path)
         os.remove(new_audio_path)
