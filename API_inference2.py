@@ -98,21 +98,37 @@ class GenVideoApi(object):
                     last = time.time()
         #threading.Thread(target=continuous).start()
         command = [
-			'ffmpeg',
-			'-i', 'pipe:',
-			'-vcodec',
-			'h264',
-			'-acodec',
-			'aac',
-			'-ar',
-			'44100',
-			'-r',
-			'25',
-			'-f', 'flv',
-			'rtmp://127.0.0.1/live/1'
+                'ffmpeg',
+                '-re',
+                '-y',
+                '-f',
+                'rawvideo',
+                '-vcodec',
+                'rawvideo',
+                '-pix_fmt',
+                'bgr24',
+                '-s', "{}x{}".format(256, 250),  # 图片分辨率
+                '-r', '25',  # 视频帧率
+                '-i', 'pipe:',
+                '-c:v', 'libx264',
+                #'-pix_fmt', 'yuv420p',
+                '-preset', 'ultrafast',
+                '-f', 'flv',
+                'rtmp://127.0.0.1/live/1'
         ]
-        self.pipe = subprocess.Popen(command, stdin=subprocess.PIPE, shell=False)
-        
+        self.pipe_video = subprocess.Popen(command, stdin=subprocess.PIPE, shell=False)
+        command = ['ffmpeg', # linux不用指定
+					'-f', 's16le',
+					'-y', '-vn',
+					'-acodec','pcm_s16le',
+					'-i', '-',
+					'-ac', '1',
+					"-rtmp_buffer", "100",
+					'-acodec', 'aac',
+					'-f', 'flv', #  flv rtsp
+					'rtmp://127.0.0.1/live/2'
+        ]
+        #self.pipe_audio = subprocess.Popen(command, stdin=subprocess.PIPE, shell=False)
 
 
         @self.app.route("/test_send2",methods=["GET","POST"])
@@ -165,6 +181,7 @@ class GenVideoApi(object):
                                 textmessage = word_list[-2]
                                 word_point = max_len
                                 part_audio = AudioSegment.from_file(self.tts.test(textmessage))
+                                part_audio.export('part.wav')
                                 ds = part_audio.duration_seconds
                                 for t in range(int(ds)):
                                     self.wav_tts.append(part_audio[t*1000:(t+1)*1000])
@@ -189,16 +206,18 @@ class GenVideoApi(object):
                     segment = self.wav_tts.pop(0)
                     segment.export('./results/tmp.wav',format='wav')
                     segment_path = './results/tmp.wav'
+                    os.system('ffmpeg -i ./results/tmp.wav -acodec aac -ar 44100 -f flv rtmp://127.0.0.1/live/2 -rtmp_buffer 1000 -loglevel quiet')
                     batch = get_data(self.first_coeff_path, segment_path, device, ref_eyeblink_coeff_path, still=args.still)
                     coeff_path = self.audio_to_coeff.generate(batch, save_dir, pose_style, ref_pose_coeff_path)
                     #coeff2video
                     data = get_facerender_data(coeff_path, crop_pic_path, self.first_coeff_path, segment_path, 
                                                 batch_size, input_yaw_list, input_pitch_list, input_roll_list,
                                                 expression_scale=args.expression_scale, still_mode=args.still, preprocess=args.preprocess, size=args.size, facemodel=args.facerender)
-                    result = self.animate_from_coeff.generate(data, save_dir, pic_path, crop_info, \
+                    result, video, sound = self.animate_from_coeff.generate(data, save_dir, pic_path, crop_info, \
                                                 enhancer=args.enhancer, background_enhancer=args.background_enhancer, preprocess=args.preprocess, img_size=args.size)
-                    with open(result, 'rb') as f:
-                        self.cache.append(f.read())
+                    '''with open(result, 'rb') as f:
+                        self.cache.append(f.read())'''
+                    self.cache.append([video,sound])
                 self.wav_tts, self.wav_tts_ok, self.render_ok = [], False, True
                 print('render over')
 
@@ -212,8 +231,11 @@ class GenVideoApi(object):
             if len(self.cache)==0:
                 time.sleep(0.05)
             else:
-                video = self.cache.pop()
-                self.pipe.stdin.write(video)
+                video, sound = self.cache.pop()
+                for frame in video:
+                    self.pipe_video.stdin.write(frame.tobytes())
+                #self.pipe_audio.stdin.write(sound.raw_data)
+                
 
         self.render_ok = False
         self.cache = []
@@ -234,7 +256,7 @@ if __name__ == '__main__':
     parser.add_argument("--pose_style", type=int, default=1,  help="input pose style from [0, 46)")
     parser.add_argument("--batch_size", type=int, default=25,  help="the batch size of facerender")
     parser.add_argument("--size", type=int, default=256,  help="the image size of the facerender")
-    parser.add_argument("--expression_scale", type=float, default=1,  help="the batch size of facerender")
+    parser.add_argument("--expression_scale", type=float, default=0.8,  help="the batch size of facerender")
     parser.add_argument('--input_yaw', nargs='+', type=int, default=None, help="the input yaw degree of the user ")
     parser.add_argument('--input_pitch', nargs='+', type=int, default=None, help="the input pitch degree of the user")
     parser.add_argument('--input_roll', nargs='+', type=int, default=None, help="the input roll degree of the user")

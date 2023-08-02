@@ -71,7 +71,7 @@ class AnimateFromCoeff_PIRender():
         original_size = crop_info[0]
         if original_size:
             result = [ cv2.resize(result_i,(img_size, int(img_size * original_size[1]/original_size[0]) )) for result_i in result ]
-        
+        video = result
         video_name = x['video_name']  + '.mp4'
         path = os.path.join(video_save_dir, 'temp_'+video_name)
         
@@ -95,10 +95,8 @@ class AnimateFromCoeff_PIRender():
         save_video_with_watermark(path, new_audio_path, av_path, watermark= False)
         print(f'The generated video is named {video_save_dir}/{video_name}') 
 
-        #os.system('ffmpeg -i ' + got_video + ' -acodec aac -ar 44100 -vcodec h264 -r 25 -f flv rtmp://127.0.0.1/live/1 -loglevel quiet')
-
         os.remove(path)
         os.remove(new_audio_path)
 
-        return return_path#,last_frame
+        return return_path, video, sound
 

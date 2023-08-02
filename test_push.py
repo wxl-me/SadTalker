@@ -3,43 +3,45 @@ import wave
 import playsound
 import subprocess
 import time 
-
-command = [
-                'ffmpeg',
-                '-y',
-                '-f',
-                'rawvideo',
-                '-vcodec',
-                'rawvideo',
-                '-pix_fmt',
-                'bgr24',
-                '-s', "{}x{}".format(256, 256),  # 图片分辨率
-                #'-r', str(25.0),  # 视频帧率
-                '-i', 'pipe:',
-                '-c:v', 'libx264',
-                #'-pix_fmt', 'yuv420p',
-                '-preset', 'ultrafast',
-                '-f', 'flv',
-                'rtmp://127.0.0.1/live/1'
+from pydub import AudioSegment 
+import librosa
+import numpy as np
+command = [ 'ffmpeg',
+			'-y',
+			'-f',
+			'rawvideo',
+			'-vcodec',
+			'rawvideo',
+			'-pix_fmt',
+			'bgr24',
+			'-s', "{}x{}".format(256, 256),  # 图片分辨率
+			#'-r', str(25.0),  # 视频帧率
+			'-i', 'pipe:',
+			'-c:v', 'libx264',
+			#'-pix_fmt', 'yuv420p',
+			'-preset', 'ultrafast',
+			'-f', 'flv',
+			'rtmp://127.0.0.1/live/1'
     ]
 #pipe_video = subprocess.Popen(command, stdin=subprocess.PIPE, shell=False)
 
 command = ['ffmpeg', # linux不用指定
-					'-f', 's16le',
-					'-y', '-vn',
-					'-acodec','pcm_s16le',
-					'-i', '-',
-					'-ac', '1',
-					"-rtmp_buffer", "100",
-					'-acodec', 'aac',
-					'-f', 'flv', #  flv rtsp
-					'rtmp://127.0.0.1/live/2'
+			'-f', 's16le',
+			'-y', '-vn',
+			'-acodec','pcm_s16le',
+			'-i', '-',
+			'-ac', '1',
+			'-ar', '44100',
+			"-rtmp_buffer", "100",
+			'-acodec', 'aac',
+			'-f', 'flv', #  flv rtsp
+			'rtmp://127.0.0.1/live/2'
 ]
-#pipe_audio = subprocess.Popen(command, stdin=subprocess.PIPE, shell=False)
+pipe_audio = subprocess.Popen(command, stdin=subprocess.PIPE, shell=False)
 
 command = [
 			'ffmpeg',
-			'-i', 'pipe:',
+			'-i', '-',
 			'-vcodec',
 			'h264',
 			'-acodec',
@@ -94,14 +96,27 @@ def start_audio(time = 10,save_file="test.wav"):
 
 #start_audio()
 
-video = open('idle.mp4','rb').read()
+#audio = AudioSegment.from_file('examples/driven_audio/bus_chinese.wav')
+audio = librosa.load('examples/ttt.wav',sr=16000)
+audio = (audio[0]*32767).astype(np.int16)
 last = time.time() 
-while 1:
+while 0:
 	if time.time()-last>0.95:
-		pipe_all.stdin.write(video)
+		pipe_audio.stdin.write(audio.tosting())
 		last = time.time()
 		print('push')
 	else:
 		time.sleep(0.05)
-			
-	
+
+part = int(16000/25)
+n = len(audio)//part
+pipe_audio.stdin.write(audio.tobytes())
+for i in range(n-1):
+	if time.time()-last>0.04:
+		voice = audio[i*part:(i+1)*part]
+		pipe_audio.stdin.write(voice.tobytes())
+		last = time.time()
+		print('push n')
+	else:
+		time.sleep(0.05)
+#numpy.fromstring(audio.raw_data,dtype=numpy.float32)
