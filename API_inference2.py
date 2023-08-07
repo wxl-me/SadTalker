@@ -181,7 +181,6 @@ class GenVideoApi(object):
                                 textmessage = word_list[-2]
                                 word_point = max_len
                                 part_audio = AudioSegment.from_file(self.tts.test(textmessage))
-                                part_audio.export('part.wav')
                                 ds = part_audio.duration_seconds
                                 for t in range(int(ds)):
                                     self.wav_tts.append(part_audio[t*1000:(t+1)*1000])
@@ -204,9 +203,10 @@ class GenVideoApi(object):
                         time.sleep(0.05)
                         continue
                     segment = self.wav_tts.pop(0)
+                    #self.to_play.append(segment)
                     segment.export('./results/tmp.wav',format='wav')
                     segment_path = './results/tmp.wav'
-                    os.system('ffmpeg -i ./results/tmp.wav -acodec aac -ar 44100 -f flv rtmp://127.0.0.1/live/2 -rtmp_buffer 1000 -loglevel quiet')
+                    #os.system('ffmpeg -re -i ./results/tmp.wav -acodec aac -ar 44100 -f flv rtmp://127.0.0.1/live/2 -rtmp_buffer 1000 -loglevel quiet')
                     batch = get_data(self.first_coeff_path, segment_path, device, ref_eyeblink_coeff_path, still=args.still)
                     coeff_path = self.audio_to_coeff.generate(batch, save_dir, pose_style, ref_pose_coeff_path)
                     #coeff2video
@@ -217,32 +217,85 @@ class GenVideoApi(object):
                                                 enhancer=args.enhancer, background_enhancer=args.background_enhancer, preprocess=args.preprocess, img_size=args.size)
                     '''with open(result, 'rb') as f:
                         self.cache.append(f.read())'''
-                    self.cache.append([video,sound])
+                    self.cache.append([video,segment])
                 self.wav_tts, self.wav_tts_ok, self.render_ok = [], False, True
                 print('render over')
 
             threading.Thread(target=thread_gpt_tts,args=(self,textmessage)).start()
             threading.Thread(target=thread_render,args=(self,)).start()
             threading.Thread(target=self.player).start()
+            
             return jsonify('ok')
 
+        @self.app.route("/test_send3",methods=["GET","POST"])
+        def call_test_send3():
+            self.wav_tts = []
+            textmessage = request.form['userText']
+            self.time = time.time()
+            print('get question : ', textmessage)
+            def thread_gpt_tts(self:GenVideoApi, text):
+                url = 'http://36.140.15.200:8003/api/m/qa/chat' #正式版stream
+                word_point = 0
+                has_fh = False
+                has_10 = False
+                has_10_time = 0
+                response = requests.post(url, stream=True, json={"message_id":13, "text":text})   
+                voice_time = 0
+                last = time.time()
+                for chunk in response.iter_lines(decode_unicode=True, delimiter='-----'):
+                    if chunk:
+                        if not has_fh and not has_10:
+                            if '。' in chunk or '，' in chunk or '：' in chunk:
+                                has_fh = True
+                        else:
+                            word_list = re.split('，|。|：', chunk.replace('\n',''))
+                            max_len = len(word_list)
+                            '''if has_10:
+                                max_len = has_10_time+1'''
+                            if max_len>word_point:
+                                print('time : ', word_point, 'word to tts : ', word_list[-2])
+                                textmessage = word_list[-2]
+                                word_point = max_len
+                                part_audio = AudioSegment.from_file(self.tts.test(textmessage))
+                                ds = part_audio.duration_seconds
+                                for t in range(int(ds)):
+                                    self.wav_tts.append(part_audio[t*1000:(t+1)*1000])
+                                    voice_time += 1
+                                self.wav_tts.append(part_audio[int(ds)*1000:]+AudioSegment.silent((1+int(ds)-ds)*1000))
+                                voice_time += 1
+                self.wav_tts_ok = True
+                print('tts cost time: ',time.time()-last, 'voice time is : ', voice_time)
+                
+            threading.Thread(target=thread_gpt_tts,args=(self,textmessage)).start()
+
+
     def player(self):
+        last =  time.time()
         while len(self.cache) != 0 or not self.render_ok:
             if len(self.cache)==0:
                 time.sleep(0.05)
             else:
-                video, sound = self.cache.pop()
-                for frame in video:
-                    self.pipe_video.stdin.write(frame.tobytes())
-                #self.pipe_audio.stdin.write(sound.raw_data)
-                
-
+                if time.time()-last>0.5:
+                    last = time.time()
+                    video, sound = self.cache.pop(0)
+                    sound.export('part.wav',format='wav') 
+                    #os.system('ffmpeg -re -i part.wav -acodec aac -ar 44100 -f flv rtmp://127.0.0.1/live/2 -rtmp_buffer 1000 -loglevel quiet')
+                    for frame in video:
+                        self.pipe_video.stdin.write(frame.tobytes())
+                    #self.pipe_audio.stdin.write(sound.raw_data)
+                    
+                else:
+                    time.sleep(0.05)
+        for i in range(25):
+            self.pipe_video.stdin.write(frame.tobytes())
+        #os.system('ffmpeg -re -i idle.wav -acodec aac -ar 44100 -f flv rtmp://127.0.0.1/live/2 -rtmp_buffer 1000 -loglevel quiet')
         self.render_ok = False
         self.cache = []
         print('push over')
         return 
         
 
+    
     #生成图像 <div id="component-8" class="block svelte-mppz8v" style="width: 256px; border-style: solid; overflow: hidden; background-color: rgb(193, 230, 198); border-color: rgba(0, 0, 0, 0.35);"><div class="wrap default svelte-j1gjts hide" style="position: absolute; padding: 0px; background-color: rgb(193, 230, 198);"></div> <div style="background-color: rgb(193, 230, 198); border-bottom-color: rgba(0, 0, 0, 0.35); border-right-color: rgba(0, 0, 0, 0.35);" class="svelte-1sohkj6 float"><span class="svelte-1sohkj6"><svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="feather feather-video"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg></span> 已生成视频</div> <div class="wrap svelte-1vnmhm4" style="opacity: 1; background-color: rgb(193, 230, 198);"><video src="http://192.168.102.22:7860/file=/tmp/gradio/ac955accc8f2622a4ba6ab86c59e7463ea2f213c/imageidlemode_2.0.mp4" preload="auto" class="svelte-1vnmhm4" style="opacity: 1; transition: all 0.2s ease 0s;"><track kind="captions" default=""></video> <div class="controls svelte-1vnmhm4" style="opacity: 0; transition: all 0.2s ease 0s;"><div class="inner svelte-1vnmhm4"><span class="icon svelte-1vnmhm4"><svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="feather feather-rotate-ccw"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg></span> <span class="time svelte-1vnmhm4">0:02 / 0:02</span> <progress value="1" class="svelte-1vnmhm4"></progress> <div class="icon svelte-1vnmhm4"><svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg></div></div></div></div> <div class="download svelte-90pr3x" data-testid="download-div"><a href="http://192.168.102.22:7860/file=/tmp/gradio/ac955accc8f2622a4ba6ab86c59e7463ea2f213c/imageidlemode_2.0.mp4" download="imageidlemode_2.0.mp4"><button aria-label="Download" class="svelte-1p4r00v" style="background-color: rgb(193, 230, 198); border-color: rgba(0, 0, 0, 0.35);"><div class="svelte-1p4r00v"><svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 32 32"><path fill="currentColor" d="M26 24v4H6v-4H4v4a2 2 0 0 0 2 2h20a2 2 0 0 0 2-2v-4zm0-10l-1.41-1.41L17 20.17V2h-2v18.17l-7.59-7.58L6 14l10 10l10-10z"></path></svg></div></button></a></div></div>
 if __name__ == '__main__':
 

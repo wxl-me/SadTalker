@@ -3,7 +3,12 @@ import os
 import time
 import threading
 import base64,subprocess,json
+from ffpyplayer.player import MediaPlayer
 from sseclient import SSEClient
+import cv2
+import pyautogui
+from pydub.playback import play
+from pydub import AudioSegment
 url1 = 'http://106.14.125.228:50031/api/open/openchat' #测试版
 url2 = 'http://36.140.15.200:8002/api/open/openchat' #正式版
 url3 = 'http://36.140.15.200:8003/api/m/qa/chat' #正式版stream
@@ -11,6 +16,10 @@ url3 = 'http://36.140.15.200:8003/api/m/qa/chat' #正式版stream
 idle = True
 time_n = 0
 last = time.time()
+begin_play = False
+stop_play = 0
+video_cache = []
+audio_cache = []
 def get_gpt(text):#获取gpt返回的文本
     json = {"question":text} 
     json_stream = {"message_id":13, "text":text}
@@ -145,17 +154,59 @@ def continuous():
             time_n += 1
             print('time :',time_n,' idle',' cost :',time.time()-last)
             last = time.time()
-   
-def test(userText='',gpt=True):
-    global idle,time_n,last
+def PlayVideo(video_path):
+    global begin_play, stop_play, time_n
+    n = 0
+    def player(video_path):
+        video = cv2.VideoCapture(video_path)
+        pl = MediaPlayer(video_path)
+        while True:
+            res, frame = video.read()
+            if not res:
+                print("End of video : ",n)
+                return
+
+            if cv2.waitKey(1000//25) & 0xFF == ord("q"):
+                break
+            cv2.imshow("Video", frame)   
+    while True:
+        if begin_play and n<=time_n:
+            print('now play : ', n, ' pull : ', time_n)
+            player(video_path=video_path + 'got_video_' + str(n) + '.mp4')
+            n += 1
+        else:
+            time.sleep(0.05)
+        if n>time_n and stop_play:
+            stop_play = False
+            time_n = 0
+            begin_play = False
+            break
+def PlayVideo2(video_path):
+    global begin_play, stop_play, time_n, video_cache, audio_cache
+    n = 0
+    def play_audio(audio_cache):
+        while len(audio_cache):
+            to_play = audio_cache.pop(0)
+            play(to_play)
+    while True:
+        if begin_play and n<=time_n:
+            threading.Thread(target=play_audio,args=(audio_cache,)).start()
+            while len(video_cache):
+                if cv2.waitKey(1000//25) & 0xFF == ord("q"):
+                    break
+                cv2.imshow("Video", video_cache.pop(0)[1])   
+        else:
+            time.sleep(0.05)
+        if n>time_n and stop_play:
+            stop_play = False
+            time_n = 0
+            begin_play = False
+            break
+def test(userText='',gpt=True,play=False):
+    global idle, time_n, last, begin_play, stop_play
     test = "http://192.168.102.22:9907/test"
     test_n = '2'
     start = time.time()
-    thread_ = threading.Thread(target=continuous)
-    thread_.setDaemon(True)
-    thread_.start() 
-    print('open thread cost time: ',time.time()-start)
-
     if gpt:
         start = time.time()
         response = requests.post(url=url2, json={"question":userText} , timeout=60)
@@ -168,7 +219,6 @@ def test(userText='',gpt=True):
             print('GPT Error Code: '+response.status_code)
     else:
         response_text = userText
-    #time.sleep(100)
     start = time.time()
     def send_thread():
         try:
@@ -177,30 +227,38 @@ def test(userText='',gpt=True):
             print('close send pipe')
     threading.Thread(target=send_thread).start()
     print('send text cost time: ',time.time()-start)
-    messages = SSEClient(test+test_n)
-    got_video = 'got_video.mp4'
-    #time.sleep(3)
-    idle = False
-    last = time.time()
-    for msg in messages:
-        if msg.event == 'message':
-            if msg.data == '':
-                break
-            stream = base64.b64decode(eval(eval(msg.data)['value']))
-            with open(got_video,'wb') as f:
-                f.write(stream)
-            while time.time()-last<0.85:
-                time.sleep(0.1)
-            os.system('ffmpeg -i ' + got_video + ' -acodec aac -ar 44100 -vcodec h264 -r 25 -f flv rtmp://127.0.0.1/live/1 -loglevel quiet')   
-            #os.system('mplayer '+got_video)
-            time_n += 1
-            print('time :',time_n,' push',' cost :',time.time()-last) 
-            last = time.time()
-    print('pull over, start idle')
-    last = time.time()
-    idle = True
-    #3548230
-    #12740011
+    if play:
+        messages = SSEClient(test+test_n)
+        dir_name = 'results/' + time.strftime("%Y_%m_%d_%H.%M.%S") + '/' 
+        os.makedirs(dir_name)
+        got_video = dir_name + 'got_video_' + str(time_n) + '.mp4'
+        threading.Thread(target=PlayVideo2,args=(dir_name,)).start()
+        idle = False
+        last = time.time()
+        for msg in messages:
+            if msg.event == 'message':
+                if msg.data == '':
+                    break
+                stream = base64.b64decode(eval(eval(msg.data)['value']))
+                with open(got_video,'wb') as f:
+                    f.write(stream)
+                '''   '''
+                v = cv2.VideoCapture(got_video)
+                for _ in range(int(v.get(cv2.CAP_PROP_FRAME_COUNT))):
+                    video_cache.append(v.read())
+                audio_cache.append(AudioSegment.from_file(got_video))
+                '''   '''
+                begin_play = True
+                time_n += 1
+                got_video =  dir_name + 'got_video_' + str(time_n) + '.mp4'   
+                print('time :',time_n,' push',' cost :',time.time()-last) 
+                last = time.time()
+        time_n -= 1     
+        stop_play = True
+        print('pull over')
+        last = time.time()
+        idle = True
+
 '''response = get_gpt('介绍一下深圳')
 print(response.content.decode().split('"result":"')[-1].split('"}')[0])#'''
 
@@ -211,11 +269,11 @@ print(response.content.decode().split('"result":"')[-1].split('"}')[0])#'''
 print(response)
 print('0')'''
 
-test('你认识openai么',gpt=False)
-time.sleep(5)
-time.sleep(5)
+test('介绍一下你会干什么',gpt=False,play=True)
+'''time.sleep(5)
+time.sleep(5)'''
 
-exit()#'''
+#'''
 '''response = get_gpt('你好阿')
 print(response.status_code)
 print(response.content)'''

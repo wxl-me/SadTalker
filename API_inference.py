@@ -315,6 +315,9 @@ class GenVideoApi(object):
                 last = time.time()
                 for chunk in response.iter_lines(decode_unicode=True, delimiter='-----'):
                     if chunk:
+                        if 'err_code' in chunk:
+                            print(chunk)
+                            break
                         if not has_fh and not has_10:
                             if '。' in chunk or '，' in chunk or '：' in chunk:
                                 has_fh = True
@@ -341,12 +344,15 @@ class GenVideoApi(object):
                                 textmessage = word_list[-2]
                                 word_point = max_len
                                 part_audio = AudioSegment.from_file(self.tts.test(textmessage))
-                                ds = part_audio.duration_seconds
+                                '''ds = part_audio.duration_seconds
                                 for t in range(int(ds)):
-                                    self.wav_tts.append(part_audio[t*1000:(t+1)*1000])
+                                    self.wav_tts.append(part_audio[t*1000:(t+1)*1000-70])
                                     voice_time += 1
                                 self.wav_tts.append(part_audio[int(ds)*1000:]+AudioSegment.silent((1+int(ds)-ds)*1000))
+                                voice_time += 1'''
+                                self.wav_tts.append(part_audio)
                                 voice_time += 1
+
                 self.wav_tts_ok = True
                 print('tts cost time: ',time.time()-last, 'voice time is : ', voice_time)
 
@@ -371,7 +377,7 @@ class GenVideoApi(object):
                     data = get_facerender_data(coeff_path, crop_pic_path, self.first_coeff_path, segment_path, 
                                                 batch_size, input_yaw_list, input_pitch_list, input_roll_list,
                                                 expression_scale=args.expression_scale, still_mode=args.still, preprocess=args.preprocess, size=args.size, facemodel=args.facerender)
-                    result = self.animate_from_coeff.generate(data, save_dir, pic_path, crop_info, \
+                    result,_,_ = self.animate_from_coeff.generate(data, save_dir, pic_path, crop_info, \
                                                 enhancer=args.enhancer, background_enhancer=args.background_enhancer, preprocess=args.preprocess, img_size=args.size)
                     with open(result, 'rb') as f:
                         self.cache.append('data:'+json.dumps({'value': str(base64.b64encode(f.read()))})+'\n\n')
@@ -400,7 +406,10 @@ class GenVideoApi(object):
                 self.cache = []
                 print('push over')
 
-            return Response(eventStream(self), mimetype="text/event-stream")
+            response = Response(eventStream(self), mimetype="text/event-stream")
+            response.headers.add('Cache-Control', 'no-cache')
+            return response
+        
         
         @self.app.route("/test3",methods=["GET","POST"])
         def call_test3():

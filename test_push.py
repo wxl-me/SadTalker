@@ -6,6 +6,8 @@ import time
 from pydub import AudioSegment 
 import librosa
 import numpy as np
+import os
+from moviepy.editor import *
 command = [ 'ffmpeg',
 			'-y',
 			'-f',
@@ -37,7 +39,7 @@ command = ['ffmpeg', # linux不用指定
 			'-f', 'flv', #  flv rtsp
 			'rtmp://127.0.0.1/live/2'
 ]
-pipe_audio = subprocess.Popen(command, stdin=subprocess.PIPE, shell=False)
+#pipe_audio = subprocess.Popen(command, stdin=subprocess.PIPE, shell=False)
 
 command = [
 			'ffmpeg',
@@ -53,7 +55,7 @@ command = [
 			'-f', 'flv',
 			'rtmp://127.0.0.1/live/1'
 ]
-pipe_all = subprocess.Popen(command, stdin=subprocess.PIPE, shell=False)
+#pipe_all = subprocess.Popen(command, stdin=subprocess.PIPE, shell=False)
 
 def start_audio(time = 10,save_file="test.wav"):
 	CHUNK = 4410
@@ -97,7 +99,7 @@ def start_audio(time = 10,save_file="test.wav"):
 #start_audio()
 
 #audio = AudioSegment.from_file('examples/driven_audio/bus_chinese.wav')
-audio = librosa.load('examples/ttt.wav',sr=16000)
+'''audio = librosa.load('examples/ttt.wav',sr=16000)
 audio = (audio[0]*32767).astype(np.int16)
 last = time.time() 
 while 0:
@@ -116,7 +118,34 @@ for i in range(n-1):
 		voice = audio[i*part:(i+1)*part]
 		pipe_audio.stdin.write(voice.tobytes())
 		last = time.time()
-		print('push n')
+		print('push ', i)
+	else:
+		time.sleep(0.05)'''
+command = [ 'ffmpeg',
+			'-y',
+			'-vcodec',
+			'h264',
+			'-acodec',
+			'aac',
+			'-r', str(25.0),  # 视频帧率
+
+			'-i', 'pipe:',
+			'-c:v', 'libx264',
+			'-ac', '1',
+			'-ar', '44100',
+			'-f', 'flv',
+			'rtmp://127.0.0.1/live/1'
+    ]
+pipe = subprocess.Popen(command, stdin=subprocess.PIPE, shell=False)
+video = '/home/aimall/xiaolongwang/stable-diffusion-webui/extensions/SadTalker/results/2023_08_02_17.43.45/art_6##tmp.mp4'
+video = VideoFileClip(video)
+audio = video.audio
+last = time.time() 
+while 1:
+	if time.time()-last>0.95:
+		#os.system('ffmpeg -i ' + video + ' -acodec aac -ar 44100 -vcodec h264 -r 25 -f flv rtmp://127.0.0.1/live/1 -loglevel quiet')
+		pipe.stdin.write() 
+		last = time.time()
+		print('push ',last)
 	else:
 		time.sleep(0.05)
-#numpy.fromstring(audio.raw_data,dtype=numpy.float32)

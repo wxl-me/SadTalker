@@ -17,8 +17,7 @@ def PlayVideo(video_path):
             threading.Thread(target=thread).start()
             cv2.waitKey(0)
             print("End of video")
-            
-            cv2.waitKey(0)
+            return
 
         if cv2.waitKey(1000//25) & 0xFF == ord("q"):
             break
@@ -32,9 +31,10 @@ def PlayVideo(video_path):
     #cv2.destroyAllWindows()
 
 PlayVideo(video_path)
+PlayVideo(video_path)
 
 # way2
-import cv2
+'''import cv2
 import numpy as np
 from ffpyplayer.player import MediaPlayer
 import pyautogui, time, threading, os, subprocess
@@ -45,4 +45,4 @@ command = ["ffplay",
 pipe = subprocess.Popen(command, stdin=subprocess.PIPE, shell=False)
 while True:
     if cv2.waitKey(0) & 0xff == ord('0'):
-        pipe.stdin.write('q')
+        pipe.stdin.write('q')'''
