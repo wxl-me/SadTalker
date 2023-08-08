@@ -81,14 +81,14 @@ class AnimateFromCoeff_PIRender():
         return_path = av_path 
         
         audio_path =  x['audio_path'] 
-        audio_name = os.path.splitext(os.path.split(audio_path)[-1])[0]
+        '''audio_name = os.path.splitext(os.path.split(audio_path)[-1])[0]
         new_audio_path = os.path.join(video_save_dir, audio_name+'.wav')
         start_time = 0
         # cog will not keep the .mp3 filename
-        sound = AudioSegment.from_file(audio_path)
+        sound = audio_path #AudioSegment.from_file(audio_path)
         frames = frame_num 
         end_time = start_time + frames*1/25*1000
-        word1=sound.set_frame_rate(16000)
+        word1 = sound.set_frame_rate(16000)
         word = word1[start_time:end_time]
         word.export(new_audio_path, format="wav")
 
@@ -96,7 +96,8 @@ class AnimateFromCoeff_PIRender():
         print(f'The generated video is named {video_save_dir}/{video_name}') 
 
         os.remove(path)
-        os.remove(new_audio_path)
-
+        os.remove(new_audio_path)'''
+        sound = audio_path
+        return_path = path
         return return_path, video, sound
 

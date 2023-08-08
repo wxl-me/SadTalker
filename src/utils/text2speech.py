@@ -1,7 +1,7 @@
-import os
+import io
 import tempfile
 from TTS.api import TTS
-
+from pydub import AudioSegment
 
 class TTSTalker():
     def __init__(self) -> None:
@@ -26,16 +26,21 @@ class TTSTalker1():
         self.xiaoyuan_tts_v1_api_pb2 = xiaoyuan_tts_v1_api_pb2
         channel = grpc.insecure_channel('47.103.98.63:59000')
         self.tts_stub = xiaoyuan_tts_v1_api_pb2_grpc.APIStub(channel)
+        self.tmp = './results/temp.wav'
 
-
-    def test(self, text, language='en'):
-        self.getTTsResult(text)
-        return './results/temp.wav'
+    def test(self, text, language='en',return_file=False):
+        if return_file:
+            self.getTTsResult(text)
+            return self.tmp
+        return self.getTTsResult(text)
     
-    def getTTsResult(self, robotText, tts_id:str='others', ues_thread=False):
+    def getTTsResult(self, robotText, tts_id:str='others', ues_thread=False, return_file=False):
         wav_data = self.tts_stub.Exec(self.xiaoyuan_tts_v1_api_pb2.ExecReq(conversation_id="120",user_id="1",text=robotText)).wav_data # 接收转码得到字节数据
-        with open('./results/temp.wav',"wb+") as f: # 写入文件
-            f.write(wav_data)
+        if return_file:
+            with open('./results/temp.wav',"wb+") as f: # 写入文件
+                f.write(wav_data)
+        else:
+            return AudioSegment.from_file(io.BytesIO(wav_data))
         
 class TTSTalker_API():
     def __init__(self) -> None:

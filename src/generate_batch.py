@@ -54,14 +54,15 @@ def get_data(first_coeff_path, audio_path, device, ref_eyeblink_coeff_path, stil
     fps = 25
 
     pic_name = os.path.splitext(os.path.split(first_coeff_path)[-1])[0]
-    audio_name = os.path.splitext(os.path.split(audio_path)[-1])[0]
-
+    #audio_name = os.path.splitext(os.path.split(audio_path)[-1])[0]
+    wav = np.array(audio_path.get_array_of_samples())/2**31
     
     if idlemode:
         num_frames = int(length_of_audio * 25)
         indiv_mels = np.zeros((num_frames, 80, 16))
     else:
-        wav = audio.load_wav(audio_path, 16000) 
+        #wav = audio.load_wav(audio_path, 16000) 
+
         wav_length, num_frames = parse_audio_length(len(wav), 16000, 25)
         wav = crop_pad_audio(wav, wav_length)
         orig_mel = audio.melspectrogram(wav).T
@@ -116,5 +117,5 @@ def get_data(first_coeff_path, audio_path, device, ref_eyeblink_coeff_path, stil
             'ref': ref_coeff, 
             'num_frames': num_frames, 
             'ratio_gt': ratio,
-            'audio_name': audio_name, 'pic_name': pic_name}
+            'audio_name': 'segment', 'pic_name': pic_name}
 

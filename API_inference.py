@@ -5,19 +5,16 @@ from argparse import ArgumentParser
 import platform
 from src.utils.preprocess import CropAndExtract
 from src.test_audio2coeff import Audio2Coeff  
-from src.facerender.animate import AnimateFromCoeff
 from src.facerender.pirender_animate import AnimateFromCoeff_PIRender
 from src.generate_batch import get_data
 from src.generate_facerender_batch import get_facerender_data
 from src.utils.init_path import init_path
 import time,json,base64
-import multiprocessing as mp
-import pyaudio, wave, threading
+import  threading
 from flask import Flask, jsonify, request, make_response, send_from_directory, Response
 from src.utils.text2speech import TTSTalker_API
 from gevent import pywsgi
 from pydub import AudioSegment
-from moviepy import editor
 import requests, re
 
 class GenVideoApi(object):
@@ -30,7 +27,7 @@ class GenVideoApi(object):
         self.cache = []
         self.render_ok = False
         self.idle, self.time_n, self.last = True, time.time(), time.time()
-
+        self.render_error = False
         self.tts = TTSTalker_API()
         self.app = Flask("__main__")  # web framework
         pic_path = args.source_image
@@ -47,20 +44,11 @@ class GenVideoApi(object):
         ref_pose = args.ref_pose
 
         current_root_path = os.path.split(sys.argv[0])[0]
-
         sadtalker_paths = init_path(args.checkpoint_dir, os.path.join(current_root_path, 'src/config'), args.size, args.old_version, args.preprocess)
 
         #init model
         self.preprocess_model = CropAndExtract(sadtalker_paths, device)
-
         self.audio_to_coeff = Audio2Coeff(sadtalker_paths,  device)
-        
-        '''if args.facerender == 'facevid2vid':
-            self.animate_from_coeff = AnimateFromCoeff(sadtalker_paths, device)
-        elif args.facerender == 'pirender':
-            self.animate_from_coeff = AnimateFromCoeff_PIRender(sadtalker_paths, device)
-        else:
-            raise(RuntimeError('Unknown model: {}'.format(args.facerender)))'''
         self.animate_from_coeff = AnimateFromCoeff_PIRender(sadtalker_paths, device)
 
         #crop image and extract 3dmm from image
@@ -95,214 +83,13 @@ class GenVideoApi(object):
             ref_pose_coeff_path=None
 
         print('prepare model ok!')
-        def continuous():
-            while True:
-                if self.idle:
-                    while time.time()-self.last<0.9:
-                        time.sleep(0.1)
-                    if not self.idle:
-                        continue
-                    os.system('ffmpeg -i ' + 'idle.mp4' + ' -acodec aac -ar 44100 -vcodec h264 -r 25 -f flv rtmp://127.0.0.1/live/1 -loglevel quiet')       
-                    self.time_n += 1
-                    print('time :',self.time_n,' idle',' cost :',time.time()-self.last)
-                    last = time.time()
-        #threading.Thread(target=continuous).start()
 
-        '''@self.app.route("/genVideo", methods=["POST"])
-        def call_generate_video():
-            begin_t = time.time()
-            textmessage = request.form
-            wav_tts = self.tts.test(textmessage['userText'])
-
-            #pose_style = random.randint(0,45)
-            #audio2ceoff
-            batch = get_data(self.first_coeff_path, wav_tts, device, ref_eyeblink_coeff_path, still=args.still)
-            coeff_path = self.audio_to_coeff.generate(batch, save_dir, pose_style, ref_pose_coeff_path)
-            
-            #coeff2video
-            data = get_facerender_data(coeff_path, crop_pic_path, self.first_coeff_path, wav_tts, 
-                                        batch_size, input_yaw_list, input_pitch_list, input_roll_list,
-                                        expression_scale=args.expression_scale, still_mode=args.still, preprocess=args.preprocess, size=args.size, facemodel=args.facerender)
-            
-            result = self.animate_from_coeff.generate(data, save_dir, pic_path, crop_info, \
-                                        enhancer=args.enhancer, background_enhancer=args.background_enhancer, preprocess=args.preprocess, img_size=args.size)
-            
-            #os.system('mplayer -fs ' + result)
-            print('cost time : ', time.time()-begin_t)
-            try:
-                response = make_response(send_from_directory('', result, as_attachment=True))
-                return response
-            except Exception as e:
-                return jsonify({"code": "异常", "message": "{}".format(e)})
-            
-        @self.app.route("/genVideoStream", methods=["GET"])
-        def call_generate_video_stream():    
-            textmessage = request.form
-            wav_tts = self.tts.test(textmessage['userText'])
-            audio = AudioSegment.from_file(wav_tts)
-            self.duration = audio.duration_seconds # 单位为秒
-
-            for t in range(int(self.duration)+1):
-                self.now_duration = t
-                segment = audio[t*1000:(t+1)*1000]
-                segment.export('./results/tmp.wav',format='wav')
-                segment_path = './results/tmp.wav'
-                batch = get_data(self.first_coeff_path, segment_path, device, ref_eyeblink_coeff_path, still=args.still)
-                coeff_path = self.audio_to_coeff.generate(batch, save_dir, pose_style, ref_pose_coeff_path)
-                #coeff2video
-                data = get_facerender_data(coeff_path, crop_pic_path, self.first_coeff_path, segment_path, 
-                                            batch_size, input_yaw_list, input_pitch_list, input_roll_list,
-                                            expression_scale=args.expression_scale, still_mode=args.still, preprocess=args.preprocess, size=args.size, facemodel=args.facerender)
-                result = self.animate_from_coeff.generate(data, save_dir, pic_path, crop_info, \
-                                            enhancer=args.enhancer, background_enhancer=args.background_enhancer, preprocess=args.preprocess, img_size=args.size)
-                return jsonify({"path": result})    
-                 
-        @self.app.route("/getVideoDuration", methods=["GET"])
-        def call_get_audio_duration():
-            start = time.time()
-            while self.duration==0:
-                if time.time()-start>30:
-                    return jsonify({"duration":0})
-            return jsonify({"duration":self.duration})
-        
-        @self.app.route("/getVideo", methods=["GET"])
-        def call_get_video():
-            textmessage = request.form
-            need_n = textmessage['n']
-            start = time.time()
-            while self.now_duration<need_n:
-                if time.time()-start>10:
-                    return jsonify({"error":"timeout"})
-            video = 'return_video'+str(need_n)+'.mp4'
-            try:
-                response = make_response(send_from_directory('', video, as_attachment=True))
-                return response
-            except Exception as e:
-                return jsonify({"error": "异常", "message": "{}".format(e)})
-        
-        @self.app.route("/test_send",methods=["GET","POST"])
-        def call_test_send():
-            textmessage = request.form['userText']
-            print('got Text: '+textmessage)
-            textmessage = textmessage.replace('\\n','')
-            last = time.time()
-            self.wav_tts = self.tts.test(textmessage)
-            print('tts cost time: ',time.time()-last)
-            return jsonify('ok')
-        
-        @self.app.route("/test",methods=["GET","POST"])
-        def call_test():
-            #textmessage = request.form
-            def eventStream():
-                last = time.time()
-                while self.wav_tts is None:
-                    if time.time()-last>15:
-                        return 
-                audio = AudioSegment.from_file(self.wav_tts)  
-                self.duration = audio.duration_seconds # 单位为秒     
-                to_add = self.duration - int(self.duration)     
-                audio = audio + AudioSegment.silent((1-to_add)*1000)
-                print('audio time duration: ',audio.duration_seconds)
-                for t in range(int(self.duration)+1):
-                    self.now_duration = t
-                    segment = audio[t*1000:(t+1)*1000]
-                    segment.export('./results/tmp.wav',format='wav')
-                    segment_path = './results/tmp.wav'
-                    batch = get_data(self.first_coeff_path, segment_path, device, ref_eyeblink_coeff_path, still=args.still)
-                    coeff_path = self.audio_to_coeff.generate(batch, save_dir, pose_style, ref_pose_coeff_path)
-                    #coeff2video
-                    data = get_facerender_data(coeff_path, crop_pic_path, self.first_coeff_path, segment_path, 
-                                                batch_size, input_yaw_list, input_pitch_list, input_roll_list,
-                                                expression_scale=args.expression_scale, still_mode=args.still, preprocess=args.preprocess, size=args.size, facemodel=args.facerender)
-                    result = self.animate_from_coeff.generate(data, save_dir, pic_path, crop_info, \
-                                                enhancer=args.enhancer, background_enhancer=args.background_enhancer, preprocess=args.preprocess, img_size=args.size)
-                    with open(result, 'rb') as f:
-                        yield 'data:'+json.dumps({'value': str(base64.b64encode(f.read()))})+'\n\n'
-                self.wav_tts = None
-            
-            return Response(eventStream(), mimetype="text/event-stream")
-        
-        @self.app.route("/test_send1",methods=["GET","POST"])
-        def call_test_send1():
-            self.wav_tts = []
-            textmessage = request.form['userText']
-            self.time = time.time()
-            def thread_tts(self, textmessage):
-                voice_time = 0
-                print('got Text: '+textmessage)
-                textmessage = textmessage.replace('\\n','')
-                textmessage = textmessage.split('。')
-                if textmessage[-1]=='':
-                    textmessage.pop()
-                last = time.time()
-                for i in range(len(textmessage)):
-                    part_audio = AudioSegment.from_file(self.tts.test(textmessage[i]))
-                    ds = part_audio.duration_seconds
-                    for t in range(int(ds)):
-                        self.wav_tts.append(part_audio[t*1000:(t+1)*1000])
-                        voice_time += 1
-                    self.wav_tts.append(part_audio[int(ds)*1000:]+AudioSegment.silent((1+int(ds)-ds)*1000))
-                    voice_time += 1
-                self.wav_tts_ok = True
-                print('tts cost time: ',time.time()-last, 'voice time is : ', voice_time)
-                
-            threading.Thread(target=thread_tts,args=(self,textmessage)).start()
-            return jsonify('ok')
-        
-        @self.app.route("/test1",methods=["GET","POST"])
-        def call_test1():
-            print('get data->process cost time : ',time.time()-self.time)
-            def eventStream():
-                last = time.time()
-                while len(self.wav_tts)==0:
-                    if time.time()-last>15:
-                        print('timeout error')
-                        return 
-                while len(self.wav_tts)!=0 or not self.wav_tts_ok: 
-                    if len(self.wav_tts)==0:
-                        pass
-                    segment = self.wav_tts.pop(0)
-                    segment.export('./results/tmp.wav',format='wav')
-                    segment_path = './results/tmp.wav'
-                    batch = get_data(self.first_coeff_path, segment_path, device, ref_eyeblink_coeff_path, still=args.still)
-                    coeff_path = self.audio_to_coeff.generate(batch, save_dir, pose_style, ref_pose_coeff_path)
-                    #coeff2video
-                    data = get_facerender_data(coeff_path, crop_pic_path, self.first_coeff_path, segment_path, 
-                                                batch_size, input_yaw_list, input_pitch_list, input_roll_list,
-                                                expression_scale=args.expression_scale, still_mode=args.still, preprocess=args.preprocess, size=args.size, facemodel=args.facerender)
-                    result = self.animate_from_coeff.generate(data, save_dir, pic_path, crop_info, \
-                                                enhancer=args.enhancer, background_enhancer=args.background_enhancer, preprocess=args.preprocess, img_size=args.size)
-                    with open(result, 'rb') as f:
-                        yield 'data:'+json.dumps({'value': str(base64.b64encode(f.read()))})+'\n\n'
-                self.wav_tts, self.wav_tts_ok = [], False
-            
-            return Response(eventStream(), mimetype="text/event-stream")
-        '''
         @self.app.route("/test_send2",methods=["GET","POST"])
         def call_test_send2():
             self.wav_tts = []
             textmessage = request.form['userText']
             self.time = time.time()
             print('get question : ', textmessage)
-
-            def thread_tts1(self:GenVideoApi, textmessage):
-                voice_time = 0
-                print('got Text: '+textmessage)
-                textmessage = textmessage.replace('\\n','')
-                textmessage = textmessage.split('。')
-                if textmessage[-1]=='':
-                    textmessage.pop()
-                last = time.time()
-                for i in range(len(textmessage)):
-                    part_audio = AudioSegment.from_file(self.tts.test(textmessage[i]))
-                    ds = part_audio.duration_seconds
-                    for t in range(int(ds)):
-                        self.wav_tts.append(part_audio[t*1000:(t+1)*1000])
-                        voice_time += 1
-                    self.wav_tts.append(part_audio[int(ds)*1000:]+AudioSegment.silent((1+int(ds)-ds)*1000))
-                    voice_time += 1
-                self.wav_tts_ok = True
-                print('tts cost time: ',time.time()-last, 'voice time is : ', voice_time)
 
             def thread_gpt_tts(self:GenVideoApi, text):
                 url = 'http://36.140.15.200:8003/api/m/qa/chat' #正式版stream
@@ -343,7 +130,7 @@ class GenVideoApi(object):
                                 print('time : ', word_point, 'word to tts : ', word_list[-2])
                                 textmessage = word_list[-2]
                                 word_point = max_len
-                                part_audio = AudioSegment.from_file(self.tts.test(textmessage))
+                                part_audio = self.tts.test(textmessage) #AudioSegment.from_file(self.tts.test(textmessage))
                                 '''ds = part_audio.duration_seconds
                                 for t in range(int(ds)):
                                     self.wav_tts.append(part_audio[t*1000:(t+1)*1000-70])
@@ -352,6 +139,10 @@ class GenVideoApi(object):
                                 voice_time += 1'''
                                 self.wav_tts.append(part_audio)
                                 voice_time += 1
+                                if self.render_error:
+                                    self.render_error = False
+                                    print('render error, so gpt and tts stop')
+                                    return
 
                 self.wav_tts_ok = True
                 print('tts cost time: ',time.time()-last, 'voice time is : ', voice_time)
@@ -361,6 +152,7 @@ class GenVideoApi(object):
                 while len(self.wav_tts)==0:
                     if time.time()-last>15:
                         print('timeout error')
+                        self.render_error = True
                         return 
                     else:
                         time.sleep(0.05)
@@ -369,18 +161,18 @@ class GenVideoApi(object):
                         time.sleep(0.05)
                         continue
                     segment = self.wav_tts.pop(0)
-                    segment.export('./results/tmp.wav',format='wav')
-                    segment_path = './results/tmp.wav'
-                    batch = get_data(self.first_coeff_path, segment_path, device, ref_eyeblink_coeff_path, still=args.still)
+                    '''segment.export('./results/tmp.wav',format='wav') 
+                    segment_path = './results/tmp.wav' '''
+                    batch = get_data(self.first_coeff_path, segment, device, ref_eyeblink_coeff_path, still=args.still)
                     coeff_path = self.audio_to_coeff.generate(batch, save_dir, pose_style, ref_pose_coeff_path)
                     #coeff2video
-                    data = get_facerender_data(coeff_path, crop_pic_path, self.first_coeff_path, segment_path, 
+                    data = get_facerender_data(coeff_path, crop_pic_path, self.first_coeff_path, segment, 
                                                 batch_size, input_yaw_list, input_pitch_list, input_roll_list,
                                                 expression_scale=args.expression_scale, still_mode=args.still, preprocess=args.preprocess, size=args.size, facemodel=args.facerender)
-                    result,_,_ = self.animate_from_coeff.generate(data, save_dir, pic_path, crop_info, \
+                    result, video, audio = self.animate_from_coeff.generate(data, save_dir, pic_path, crop_info, \
                                                 enhancer=args.enhancer, background_enhancer=args.background_enhancer, preprocess=args.preprocess, img_size=args.size)
                     with open(result, 'rb') as f:
-                        self.cache.append('data:'+json.dumps({'value': str(base64.b64encode(f.read()))})+'\n\n')
+                        self.cache.append('data:'+json.dumps({'value': str(base64.b64encode(f.read())), 'audio':str(base64.b64encode(audio.export(format='wav').read()))})+'\n\n')
                 self.wav_tts, self.wav_tts_ok, self.render_ok = [], False, True
                 print('render over')
 
@@ -410,17 +202,7 @@ class GenVideoApi(object):
             response.headers.add('Cache-Control', 'no-cache')
             return response
         
-        
-        @self.app.route("/test3",methods=["GET","POST"])
-        def call_test3():
-            textmessage = request.form['userText']
-            self.time = time.time()
-            print('get question : ', textmessage)
 
-        
-
-
-    #生成图像 <div id="component-8" class="block svelte-mppz8v" style="width: 256px; border-style: solid; overflow: hidden; background-color: rgb(193, 230, 198); border-color: rgba(0, 0, 0, 0.35);"><div class="wrap default svelte-j1gjts hide" style="position: absolute; padding: 0px; background-color: rgb(193, 230, 198);"></div> <div style="background-color: rgb(193, 230, 198); border-bottom-color: rgba(0, 0, 0, 0.35); border-right-color: rgba(0, 0, 0, 0.35);" class="svelte-1sohkj6 float"><span class="svelte-1sohkj6"><svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="feather feather-video"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg></span> 已生成视频</div> <div class="wrap svelte-1vnmhm4" style="opacity: 1; background-color: rgb(193, 230, 198);"><video src="http://192.168.102.22:7860/file=/tmp/gradio/ac955accc8f2622a4ba6ab86c59e7463ea2f213c/imageidlemode_2.0.mp4" preload="auto" class="svelte-1vnmhm4" style="opacity: 1; transition: all 0.2s ease 0s;"><track kind="captions" default=""></video> <div class="controls svelte-1vnmhm4" style="opacity: 0; transition: all 0.2s ease 0s;"><div class="inner svelte-1vnmhm4"><span class="icon svelte-1vnmhm4"><svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="feather feather-rotate-ccw"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg></span> <span class="time svelte-1vnmhm4">0:02 / 0:02</span> <progress value="1" class="svelte-1vnmhm4"></progress> <div class="icon svelte-1vnmhm4"><svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg></div></div></div></div> <div class="download svelte-90pr3x" data-testid="download-div"><a href="http://192.168.102.22:7860/file=/tmp/gradio/ac955accc8f2622a4ba6ab86c59e7463ea2f213c/imageidlemode_2.0.mp4" download="imageidlemode_2.0.mp4"><button aria-label="Download" class="svelte-1p4r00v" style="background-color: rgb(193, 230, 198); border-color: rgba(0, 0, 0, 0.35);"><div class="svelte-1p4r00v"><svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 32 32"><path fill="currentColor" d="M26 24v4H6v-4H4v4a2 2 0 0 0 2 2h20a2 2 0 0 0 2-2v-4zm0-10l-1.41-1.41L17 20.17V2h-2v18.17l-7.59-7.58L6 14l10 10l10-10z"></path></svg></div></button></a></div></div>
 if __name__ == '__main__':
 
     parser = ArgumentParser()  
