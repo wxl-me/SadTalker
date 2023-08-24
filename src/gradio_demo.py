@@ -144,14 +144,15 @@ class SadTalker():
         if use_ref_video and ref_info == 'all':
             coeff_path = ref_video_coeff_path # self.audio_to_coeff.generate(batch, save_dir, pose_style, ref_pose_coeff_path)
         else:
-            batch = get_data(first_coeff_path, audio_path, self.device, ref_eyeblink_coeff_path=ref_eyeblink_coeff_path, still=still_mode, \
+            from pydub import AudioSegment
+            batch = get_data(first_coeff_path, AudioSegment.from_file(audio_path), self.device, ref_eyeblink_coeff_path=ref_eyeblink_coeff_path, still=still_mode, \
                 idlemode=use_idle_mode, length_of_audio=length_of_audio, use_blink=use_blink) # longer audio?
             coeff_path = self.audio_to_coeff.generate(batch, save_dir, pose_style, ref_pose_coeff_path)
 
         #coeff2video
         data = get_facerender_data(coeff_path, crop_pic_path, first_coeff_path, audio_path, batch_size, still_mode=still_mode, \
             preprocess=preprocess, size=size, expression_scale = exp_scale, facemodel=facerender)
-        return_path = self.animate_from_coeff.generate(data, save_dir,  pic_path, crop_info, enhancer='gfpgan' if use_enhancer else None, preprocess=preprocess, img_size=size)
+        return_path,_,_ = self.animate_from_coeff.generate(data, save_dir,  pic_path, crop_info, enhancer='gfpgan' if use_enhancer else None, preprocess=preprocess, img_size=size,return_with_audio=True)
         video_name = data['video_name']
         print(f'The generated video is named {video_name} in {save_dir}')
 

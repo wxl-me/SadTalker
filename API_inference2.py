@@ -180,7 +180,7 @@ class GenVideoApi(object):
                                 print('time : ', word_point, 'word to tts : ', word_list[-2])
                                 textmessage = word_list[-2]
                                 word_point = max_len
-                                part_audio = AudioSegment.from_file(self.tts.test(textmessage))
+                                part_audio = self.tts.test(textmessage)#AudioSegment.from_file(self.tts.test(textmessage))
                                 ds = part_audio.duration_seconds
                                 for t in range(int(ds)):
                                     self.wav_tts.append(part_audio[t*1000:(t+1)*1000])

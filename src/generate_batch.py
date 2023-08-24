@@ -47,14 +47,17 @@ def generate_blink_seq_randomly(num_frames):
         else:
             break
     return ratio
-
-def get_data(first_coeff_path, audio_path, device, ref_eyeblink_coeff_path, still=False, idlemode=False, length_of_audio=False, use_blink=True):
-
+from pydub import AudioSegment
+def get_data(first_coeff_path, audio_path:AudioSegment, device, ref_eyeblink_coeff_path, still=False, idlemode=False, length_of_audio=False, use_blink=True):
+    
     syncnet_mel_step_size = 16
     fps = 25
 
     pic_name = os.path.splitext(os.path.split(first_coeff_path)[-1])[0]
     #audio_name = os.path.splitext(os.path.split(audio_path)[-1])[0]
+    audio_path = audio_path.set_frame_rate(16000)
+    audio_path = audio_path.set_sample_width(4)
+    audio_path = audio_path.set_channels(1)
     wav = np.array(audio_path.get_array_of_samples())/2**31
     
     if idlemode:
@@ -69,7 +72,8 @@ def get_data(first_coeff_path, audio_path, device, ref_eyeblink_coeff_path, stil
         spec = orig_mel.copy()         # nframes 80
         indiv_mels = []
 
-        for i in tqdm(range(num_frames), 'mel:'):
+        #for i in tqdm(range(num_frames), 'mel:'):
+        for i in range(num_frames):
             start_frame_num = i-2
             start_idx = int(80. * (start_frame_num / float(fps)))
             end_idx = start_idx + syncnet_mel_step_size
@@ -78,8 +82,11 @@ def get_data(first_coeff_path, audio_path, device, ref_eyeblink_coeff_path, stil
             m = spec[seq, :]
             indiv_mels.append(m.T)
         indiv_mels = np.asarray(indiv_mels)         # T 80 16
-
-    ratio = generate_blink_seq_randomly(num_frames)      # T
+    try:
+        ratio = generate_blink_seq_randomly(num_frames)      # T
+    except:
+        ratio = np.zeros((num_frames,1), dtype=np.float64)
+        print('catch error, make eye blink ratio to 0')
     source_semantics_path = first_coeff_path
     source_semantics_dict = scio.loadmat(source_semantics_path)
     ref_coeff = source_semantics_dict['coeff_3dmm'][:1,:70]         #1 70

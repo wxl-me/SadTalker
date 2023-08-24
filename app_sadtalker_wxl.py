@@ -1,7 +1,7 @@
 import os, sys
 import gradio as gr
 from src.gradio_demo import SadTalker  
-import push_inference
+#import push_inference
 
 try:
     import webui  # in webui
@@ -41,7 +41,7 @@ def sadtalker_demo(checkpoint_path='checkpoints', config_path='src/config', warp
 
                 gr.Markdown("可供选择的生成方式:  1. 仅音频 2. 音频+参考视频 3. IDLE模式 4.仅参考视频")
                 with gr.Tabs(elem_id="sadtalker_driven_audio"):
-                    with gr.TabItem('音频选择'):
+                    with gr.TabItem('音频选择',id=100):
                         with gr.Row():
                             driven_audio = gr.Audio(label="输入音频", source="upload", type="filepath").style(height=200)
                             driven_audio_no = gr.Audio(label="使用IDLE模式，无需添加音频", source="upload", type="filepath", visible=False)
@@ -55,10 +55,23 @@ def sadtalker_demo(checkpoint_path='checkpoints', config_path='src/config', warp
                         from src.utils.text2speech import TTSTalker_API
                         tts_talker = TTSTalker_API()
                         with gr.Column(variant='panel'):
-                            talker = gr.Radio(['女声小元', '欧美女声'], value='女生小元',type="index", label='参考视频',info="如何参考视频？")
+                            with gr.Row():
+                                talker_select = gr.Radio(['女声小元', '欧美女声'], value='女声小元',type="index", label='参考视频',info="如何参考视频？")
+                                talker_input = gr.Number(value=-1,label='输入数字更改音色，若不能使用请改为-1以使用左侧两种音色')
+                                talker = gr.Number(value=0,visible=False)
+                                def change(select,num):
+                                    if num!=-1:
+                                        return gr.update(value=num)#gr.update(value=talker_select.choices.index(talker_select.value))
+                                    else:
+                                        return gr.update(value=select)
+                                talker_input.change(fn=change,inputs=[talker_select,talker_input],outputs=talker)
+                                talker_select.change(fn=change,inputs=[talker_select,talker_input],outputs=talker)
+                                rvc = gr.Number(value=0,label='声调变换：-12～12') # 是否使用声调变换，0表示不用，范围可选-12～12 ，具体细节询问卢家乐
                             input_text = gr.Textbox(label="输入文本以转语音", lines=5, placeholder="请输入文本，可选择的音色有：1、女声小元 2、欧美女声")
                             tts = gr.Button('生成音频',elem_id="sadtalker_audio_generate", variant='primary')
-                            tts.click(fn=tts_talker.test, inputs=[input_text,talker], outputs=[driven_audio])
+                            get_audio_file = gr.Checkbox(value=True,visible=False) # 为兼容其他程序，这里使用默认值True,（其他程序不需要返回文件，gradio需要）
+                            
+                            tts.click(fn=tts_talker.test, inputs=[input_text,talker,rvc,get_audio_file], outputs=[driven_audio])
                     with gr.TabItem('参考选择'):
                         with gr.Row():
                             ref_video = gr.Video(label="参考视频", source="upload", type="filepath", elem_id="vidref").style(width=512,height=200)
@@ -66,10 +79,10 @@ def sadtalker_demo(checkpoint_path='checkpoints', config_path='src/config', warp
                                 use_ref_video = gr.Checkbox(label="参考视频生成")
                                 ref_info = gr.Radio(['pose', 'blink','pose+blink', 'all'], value='pose', label='如何参考视频')
                             ref_video.change(ref_video_fn, inputs=ref_video, outputs=[use_ref_video]) # todo
-                    with gr.TabItem('持续生成'):
+                    '''with gr.TabItem('持续生成'):
                         with gr.Row():
                             generate_continous = gr.Button('开启', elem_id="sadtalker_generate_continuous", variant='primary')
-                            close_generate_continous = gr.Button('关闭', elem_id="sadtalker_generate_continuous", variant='primary')
+                            close_generate_continous = gr.Button('关闭', elem_id="sadtalker_generate_continuous", variant='primary')'''
 
             with gr.Column(variant='panel'): 
                 with gr.Tabs(elem_id="sadtalker_checkbox"):
@@ -84,9 +97,9 @@ def sadtalker_demo(checkpoint_path='checkpoints', config_path='src/config', warp
                             preprocess_type = gr.Radio(['crop', 'resize','full', 'extcrop', 'extfull'], value='crop', label='源图像预处理')                      
                             with gr.Row():     
                                 size_of_image = gr.Radio([256, 512], value=256, label='脸部分辨率') #
-                                facerender = gr.Radio(['facevid2vid','pirender'], value='facevid2vid', label='质量模式/速度模式')
+                                facerender = gr.Radio(['facevid2vid','pirender'], value='pirender', label='质量模式/速度模式')
                                 with gr.Column():
-                                    batch_size = gr.Slider(label="生成速度(Batch Size)", step=1, maximum=30, value=2)
+                                    batch_size = gr.Slider(label="生成速度(Batch Size)", step=1, maximum=30, value=25)
                                     enhancer = gr.Checkbox(label="是否使用脸部增强")
                                     is_still_mode = gr.Checkbox(label="静止模式(仅在`full`)")   
                                 
@@ -108,8 +121,8 @@ def sadtalker_demo(checkpoint_path='checkpoints', config_path='src/config', warp
                         length_of_audio,
                         blink_every]
         submit_click = submit.click(fn=warpfn(sad_talker.test) if warpfn else sad_talker.test, inputs=inputs, outputs=[gen_video])
-        generate_continous_click = generate_continous.click(fn=push_inference.launch, inputs=inputs)
-        close_generate_continous.click(fn=push_inference.close,cancels=[generate_continous_click])
+        '''generate_continous_click = generate_continous.click(fn=push_inference.launch, inputs=inputs)
+        close_generate_continous.click(fn=push_inference.close,cancels=[generate_continous_click])'''
     return sadtalker_interface
  
 

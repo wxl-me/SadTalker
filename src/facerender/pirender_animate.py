@@ -42,7 +42,7 @@ class AnimateFromCoeff_PIRender():
         self.device = device
     
 
-    def generate(self, x, video_save_dir, pic_path, crop_info, enhancer=None, background_enhancer=None, preprocess='crop', img_size=256):
+    def generate(self, x, video_save_dir, pic_path, crop_info, enhancer=None, background_enhancer=None, preprocess='crop', img_size=256,return_with_audio=False):
 
         source_image=x['source_image'].type(torch.FloatTensor)
         source_semantics=x['source_semantics'].type(torch.FloatTensor)
@@ -54,7 +54,8 @@ class AnimateFromCoeff_PIRender():
         
         with torch.no_grad():
             predictions_video = []
-            for i in tqdm(range(target_semantics.shape[1]), 'FaceRender:'):
+            #for i in tqdm(range(target_semantics.shape[1]), 'FaceRender:'):
+            for i in range(target_semantics.shape[1]):
                  predictions_video.append(self.net_G(source_image, target_semantics[:, i])['fake_image'])
         
         predictions_video = torch.stack(predictions_video, dim=1)
@@ -70,7 +71,8 @@ class AnimateFromCoeff_PIRender():
         ### the generated video is 256x256, so we keep the aspect ratio, 
         original_size = crop_info[0]
         if original_size:
-            result = [ cv2.resize(result_i,(img_size, int(img_size * original_size[1]/original_size[0]) )) for result_i in result ]
+            #result = [ cv2.resize(result_i,(img_size, int(img_size * original_size[1]/original_size[0]) )) for result_i in result ]
+            result = [ cv2.resize(result_i, (img_size,img_size)) for result_i in result ]
         video = result
         video_name = x['video_name']  + '.mp4'
         path = os.path.join(video_save_dir, 'temp_'+video_name)
@@ -97,6 +99,9 @@ class AnimateFromCoeff_PIRender():
 
         os.remove(path)
         os.remove(new_audio_path)'''
+        if return_with_audio:
+            save_video_with_watermark(path, audio_path, av_path, watermark= False)
+            return av_path, video, audio_path
         sound = audio_path
         return_path = path
         return return_path, video, sound
