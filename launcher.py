@@ -201,4 +201,6 @@ def start():
 
 if __name__ == "__main__":
     #prepare_environment()
+    if not os.path.exists('results'):
+        os.makedirs('results')
     start()

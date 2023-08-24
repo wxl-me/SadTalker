@@ -24,3 +24,7 @@ safetensors
 flask
 pybase64
 ffmpeg==1.4
+gevent
+ffpyplayer
+sseclient
+playsound
