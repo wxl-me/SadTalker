@@ -174,7 +174,7 @@ def prepare_environment():
 
     ## check windows 
     if sys.platform != 'win32':
-        requirements_file = os.environ.get('REQS_FILE', "req.txt")
+        requirements_file = os.environ.get('REQS_FILE', "others/req.txt")
     else:
         requirements_file = os.environ.get('REQS_FILE', "requirements.txt")
 

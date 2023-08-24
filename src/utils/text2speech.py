@@ -1,6 +1,6 @@
 import io
 import tempfile
-from TTS.api import TTS
+#from TTS.api import TTS
 from pydub import AudioSegment
 import grpc,requests,base64,json
 from .xiaoyuan_tts.v1 import xiaoyuan_tts_v1_api_pb2,xiaoyuan_tts_v1_api_pb2_grpc
@@ -67,7 +67,7 @@ class TTSTalker2():
 
 class TTSTalker_API():
     def __init__(self) -> None:
-        self.origin_talker = TTSTalker()
+        #self.origin_talker = TTSTalker()
         self.xiaoyuan_talker = TTSTalker1()
         self.another_talker = TTSTalker2()
 
@@ -75,8 +75,8 @@ class TTSTalker_API():
         print(f'Begin TTS, text:{text}, talker:{int(talker)}, rvc:{int(rvc)}, return_file:{return_file}')
         if talker==0:
             return self.xiaoyuan_talker.test(text,rvc=rvc,return_file=return_file)
-        elif talker==1:
-            return self.origin_talker.test(text)
+            '''elif talker==1:
+            return self.origin_talker.test(text)'''
         else:
             return self.another_talker.test(text, int(talker), rvc=rvc, return_file=return_file)
 
